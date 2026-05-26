@@ -1,4 +1,4 @@
-<!-- golf-sim v4 -->
+<!-- golf-sim 0.5.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -15,9 +15,15 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:#0b1410;color:var(--txt);
     font-family:'Outfit',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-  .wrap{display:flex;height:100vh;width:100%;overflow:hidden}
-  .stage{flex:1;position:relative;min-width:0;background:#0c1812}
+  .wrap{display:flex;height:100vh;width:100%;overflow:hidden;justify-content:center;background:var(--bg)}
+  /* LINEN HARBOR: hole capped to a centred column, UI docked flush on both sides */
+  .stage{flex:0 0 auto;position:relative;min-width:0;background:#0c1812;
+    width:min(46vh,52vw);height:100vh}
   canvas{display:block;width:100%;height:100%}
+  .dock{width:340px;flex:0 0 340px;background:linear-gradient(180deg,var(--panel),#0f1d15);
+    display:flex;flex-direction:column;overflow:hidden}
+  .dock.left{border-right:1px solid rgba(216,179,76,.25)}
+  .dock.right{border-left:1px solid rgba(216,179,76,.25)}
   .hud{position:absolute;left:18px;top:16px;display:flex;gap:10px;flex-wrap:wrap;pointer-events:none}
   .chip{background:rgba(8,16,11,.74);border:1px solid rgba(216,179,76,.35);
     border-radius:7px;padding:6px 11px;backdrop-filter:blur(6px)}
@@ -30,8 +36,8 @@
     background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.3);border-radius:9px;
     padding:9px 18px;font-size:14px;max-width:70%;text-align:center;backdrop-filter:blur(6px);
     transition:opacity .3s;font-style:italic}
-  .panel{width:380px;flex:none;background:linear-gradient(180deg,var(--panel),#0f1d15);
-    border-left:1px solid rgba(216,179,76,.25);display:flex;flex-direction:column;overflow:hidden}
+  .panel{flex:1;min-height:0;background:transparent;
+    display:flex;flex-direction:column;overflow:hidden}
   .panel-h{padding:16px 18px 12px;border-bottom:1px solid rgba(216,179,76,.18)}
   .panel-h .logo{font-family:'DM Serif Display',serif;font-size:26px;letter-spacing:.04em}
   .panel-h .logo b{color:var(--gold-lt)}
@@ -74,20 +80,19 @@
   .log .s{color:var(--gold-lt)}
   .smallnote{font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}
   .reset{background:none;border:1px solid #2f4a39;color:var(--muted);font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer}
-  @media(max-width:880px){.wrap{flex-direction:column}.panel{width:100%;height:46%}.stage{height:54%}}
+  @media(max-width:1080px){
+    .wrap{flex-direction:column;overflow-y:auto;height:auto;min-height:100vh}
+    .stage{width:100%;height:54vh;order:1}
+    .dock{width:100%;flex:0 0 auto;border:none;border-top:1px solid rgba(216,179,76,.18)}
+    .dock.right{order:2}.dock.left{order:3}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="stage">
-    <canvas id="cv"></canvas>
-    <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">v4</span></div></div>
-    <div class="commentary" id="comm" style="opacity:0"></div>
-  </div>
-  <div class="panel">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">v4</span></div></div>
-    <div class="scroll">
+  <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
+  <div class="dock left">
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.5.0</span></div></div>
+    <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
           <div><div class="big" id="strokes">0</div><div class="lbl">Strokes</div></div>
@@ -95,6 +100,38 @@
           <div style="margin-left:auto;text-align:right"><div class="rel" id="topin">401</div><div class="lbl">Yds to pin</div></div>
         </div>
       </div>
+      <div class="sec">
+        <div class="sec-t">Golfer Attributes <span class="reset" id="randbtn">randomize</span></div>
+        <div class="preset"><button data-pre="rookie">Rookie</button><button data-pre="pro">Tour Pro</button><button data-pre="bomber">Bomber</button><button data-pre="surgeon">Surgeon</button></div>
+        <div id="attrs"></div>
+        <div class="smallnote">Drag a slider and watch the shot cone react. <i>Power</i>→distance, <i>Accuracy</i>→cone width, <i>Consistency</i>→long/short spread &amp; mishits, <i>Putting</i>→make %.</div>
+      </div>
+      <div class="sec">
+        <div class="sec-t">Your Bag <span style="color:var(--muted);font-size:10px">carry · ±L/R · ±long/short</span></div>
+        <table id="bag"></table>
+      </div>
+      <div class="sec">
+        <div class="sec-t">Scorecard</div>
+        <div class="log" id="log"></div>
+        <label class="fld" style="margin-top:10px">Pin position</label>
+        <select id="pin"></select>
+        <button class="reset" id="newhole" style="width:100%;margin-top:8px">New attempt (random wind)</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- CENTRE: the hole -->
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="hud" id="hud"></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.5.0</span></div></div>
+    <div class="commentary" id="comm" style="opacity:0"></div>
+  </div>
+
+  <!-- RIGHT DOCK: action (shot strategy + controls) -->
+  <div class="dock right">
+    <div class="panel-h"><div class="sub" style="letter-spacing:.18em">SHOT</div></div>
+    <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="sec-t">Shot Strategy <span id="lietag" style="font-size:11px;color:var(--gold-lt);letter-spacing:.04em">Tee</span></div>
         <canvas id="lieview" style="width:100%;height:132px;display:block;border:1px solid #2f4a39;border-radius:7px;margin-bottom:8px;background:#0c1812"></canvas>
@@ -123,28 +160,11 @@
         <button class="hit" id="hit">Hit Shot</button>
         <button class="reset" id="undo" style="width:100%;margin-top:8px">Replay last shot</button>
       </div>
-      <div class="sec">
-        <div class="sec-t">Golfer Attributes <span class="reset" id="randbtn">randomize</span></div>
-        <div class="preset"><button data-pre="rookie">Rookie</button><button data-pre="pro">Tour Pro</button><button data-pre="bomber">Bomber</button><button data-pre="surgeon">Surgeon</button></div>
-        <div id="attrs"></div>
-        <div class="smallnote">Drag a slider and watch the shot cone react. <i>Power</i>→distance, <i>Accuracy</i>→cone width, <i>Consistency</i>→long/short spread &amp; mishits, <i>Putting</i>→make %.</div>
-      </div>
-      <div class="sec">
-        <div class="sec-t">Your Bag <span style="color:var(--muted);font-size:10px">carry · ±L/R · ±long/short</span></div>
-        <table id="bag"></table>
-      </div>
-      <div class="sec">
-        <div class="sec-t">Scorecard</div>
-        <div class="log" id="log"></div>
-        <label class="fld" style="margin-top:10px">Pin position</label>
-        <select id="pin"></select>
-        <button class="reset" id="newhole" style="width:100%;margin-top:8px">New attempt (random wind)</button>
-      </div>
-    </div>
+    </div></div>
   </div>
 </div>
 <script>
-const VERSION='v4';
+const VERSION='0.5.0';  /* SemVer (NICKEL MERIDIAN): MAJOR.MINOR.PATCH, pre-1.0 = in development. patch=fix, minor=feature, 1.0.0=first playable career loop */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -410,6 +430,7 @@ function resolveShot(){
   const hit=treeBlock(ball,{x:ex,y:ey},m.curve,m.apex);
   if(hit){ball={x:hit.x,y:hit.y};lie=lieAt(hit.x,hit.y);captureLie(hit.x,hit.y);
     note+='Caught the tree! ';log(note);flash(note);aiming=true;target=null;sync();setView(true);return;}
+  const land={x:ex,y:ey};                 // COPPER FINCH: carry landing (before roll-out)
   const landLie=lieAt(ex,ey), nearG=['green','fringe'].includes(landLie)||Math.hypot(ex-GREEN.cx,ey-GREEN.cy)<GREEN.rx+6;
   if(plan.aroundGreen){ // JADE LANTERN: roll out the remaining intended distance, lie + slope modulated
     const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
@@ -433,17 +454,23 @@ function resolveShot(){
     const gr={fairway:1,tee:1,rough:0.45,bunker:0.3,water:0,ob:0}[landLie]??0.7;
     const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr; ex+=cosA*roll; ey+=sinA*roll;
   }
-  settle(ex,ey,note,true,carry*0.0009);
+  settle(land,{x:ex,y:ey},note);
 }
 // returns {x,y} where a too-low shot is stopped by the tree, or null
 function treeBlock(from,to,curve,apex){
   const N=24,dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy)||1;
   const px=-dy/len,py=dx/len; // perpendicular (for the curved path)
+  // SABLE COMPASS: a tree only blocks if it is genuinely DOWNRANGE — i.e. ahead of the
+  // ball along the shot line by a real margin. A tree level with or behind the ball
+  // (you're hitting away from it) must never trigger a phantom block.
+  const MINDOWN=12; // yards of clearance off the clubface before anything can block
   for(let i=1;i<=N;i++){const f=i/N;
-    const bend=Math.sin(f*Math.PI)*curve;            // curved flight path in plan view
+    const along=f*len;                                // distance downrange to this path point
+    if(along<MINDOWN) continue;                       // skip the launch zone next to the ball
+    const bend=Math.sin(f*Math.PI)*curve;             // curved flight path in plan view
     const x=from.x+dx*f+px*bend, y=from.y+dy*f+py*bend;
-    const h=apex*Math.sin(f*Math.PI);                // height at this point
-    if(Math.hypot(x-OBST.x,y-OBST.y)<OBST.r && h<OBST.height) return{x:from.x+dx*f,y:from.y+dy*f};}
+    const h=apex*Math.sin(f*Math.PI);                 // height at this point
+    if(Math.hypot(x-OBST.x,y-OBST.y)<OBST.r && h<OBST.height) return{x,y};} // collision point on the curved flight path
   return null;
 }
 /* ---------- putting: pace-driven auto-aim (AMBER TADPOLE) ---------- */
@@ -521,18 +548,21 @@ function resolvePutt(plan){
     const m=(leaveFt>5?'Slides '+leaveFt.toFixed(1)+' ft by.':'Cozies to '+leaveFt.toFixed(1)+' ft.');
     log(m);flash(m);aiming=true;target=null;sync();setView(true);});
 }
-function settle(lx,ly,note,flight,arc){
-  animateTo(lx,ly,flight,arc,()=>{
-    let nl=lieAt(lx,ly),extra='';
-    if(nl==='water'){strokes++;const safe=backOut(ball,{x:lx,y:ly});ball=safe;lie=lieAt(safe.x,safe.y);extra='Found the water — penalty drop. ';}
-    else if(nl==='ob'){strokes++;ball={...lastBall};lie=lastLie;extra='Out of bounds — stroke & distance. ';}
-    else{ball={x:lx,y:ly};lie=nl;
-      if(nl==='green'){const dyd=Math.hypot(lx-PIN.x,ly-PIN.y);
-        if(dyd<0.18){finishPutt();return;}                                   // holed it
-        if(dyd<=0.667){strokes++;log('Tap-in conceded ('+(dyd*3).toFixed(1)+' ft).');finishPutt();return;}}}  // gimme
-    captureLie(ball.x,ball.y);
-    const msg=(note||'')+(extra||commentate(lie));log(msg);flash(msg);
-    aiming=true;target=null;sync();setView(true);});
+function settle(land,rest,note){            // COPPER FINCH: fly to landing, then roll out to rest
+  animateShot(land,rest,()=>finishSettle(rest,note));
+}
+function finishSettle(rest,note){
+  const lx=rest.x,ly=rest.y;
+  let nl=lieAt(lx,ly),extra='';
+  if(nl==='water'){strokes++;const safe=backOut(ball,{x:lx,y:ly});ball=safe;lie=lieAt(safe.x,safe.y);extra='Found the water — penalty drop. ';}
+  else if(nl==='ob'){strokes++;ball={...lastBall};lie=lastLie;extra='Out of bounds — stroke & distance. ';}
+  else{ball={x:lx,y:ly};lie=nl;
+    if(nl==='green'){const dyd=Math.hypot(lx-PIN.x,ly-PIN.y);
+      if(dyd<0.18){finishPutt();return;}                                   // holed it
+      if(dyd<=0.667){strokes++;log('Tap-in conceded ('+(dyd*3).toFixed(1)+' ft).');finishPutt();return;}}}  // gimme
+  captureLie(ball.x,ball.y);
+  const msg=(note||'')+(extra||commentate(lie));log(msg);flash(msg);
+  aiming=true;target=null;sync();setView(true);
 }
 function backOut(from,to){for(let t=0.95;t>0;t-=0.05){const x=from.x+(to.x-from.x)*t,y=from.y+(to.y-from.y)*t,l=lieAt(x,y);
   if(l!=='water'&&l!=='ob')return{x,y};}return{...from};}
@@ -547,24 +577,33 @@ function commentate(l){return{
   fringe:['Just off the fringe.','Edge of the green — putt or chip.'][rnd(2)]}[l]||'In play.';}
 
 /* ---------- animations ---------- */
-function animateTo(tx,ty,flight,arc,done){
-  const sx=ball.x,sy=ball.y,dist=Math.hypot(tx-sx,ty-sy);
-  const dur=Math.min(1000,320+dist*2.2),t0p={v:null};
-  const lift=flight?Math.min(dist*0.16,30):0; // yards of visual apex
-  tracer={pts:[],fade:1,flight,lift};
-  anim={sx,sy,tx,ty,dist,lift,prog:0};
-  function step(ts){if(t0p.v===null)t0p.v=ts;const p=Math.min(1,(ts-t0p.v)/dur);anim.prog=p;
-    tracer.pts.push([sx+(tx-sx)*p, sy+(ty-sy)*p, p]);
-    render();if(p<1)requestAnimationFrame(step);else{anim=null;fadeTracer();done();}}
+// generic single leg; tracer points carry [x,y,liftYds,flight] so colour+height vary per point
+function animLeg(sx,sy,tx,ty,dur,flight,apex,decel,done){
+  const t0={v:null};anim={sx,sy,tx,ty,prog:0,liftNow:0};
+  function step(ts){if(t0.v===null)t0.v=ts;const p=Math.min(1,(ts-t0.v)/dur);
+    const e=decel?1-Math.pow(1-p,2):p;        // roll-out decelerates to a stop
+    anim.prog=e; anim.liftNow=flight?Math.sin(p*Math.PI)*apex:0;
+    tracer.pts.push([sx+(tx-sx)*e, sy+(ty-sy)*e, anim.liftNow, flight]);
+    render(); if(p<1)requestAnimationFrame(step); else done();}
   requestAnimationFrame(step);
 }
-function animatePutt(tx,ty,done){animateTo(tx,ty,false,0,done);}
+function animateShot(land,rest,done){
+  const fd=Math.hypot(land.x-ball.x,land.y-ball.y), rd=Math.hypot(rest.x-land.x,rest.y-land.y);
+  const apex=Math.min(fd*0.16,30);
+  tracer={pts:[],fade:1};
+  animLeg(ball.x,ball.y, land.x,land.y, Math.min(1000,300+fd*2.2), true, apex, false, ()=>{
+    if(rd<0.8){anim=null;fadeTracer();done();return;}                 // negligible roll
+    animLeg(land.x,land.y, rest.x,rest.y, Math.min(750,240+rd*10), false, 0, true, ()=>{
+      anim=null;fadeTracer();done();});
+  });
+}
+function animatePutt(tx,ty,done){tracer={pts:[],fade:1};animLeg(ball.x,ball.y,tx,ty,Math.min(900,320+Math.hypot(tx-ball.x,ty-ball.y)*2.2),false,0,true,()=>{anim=null;fadeTracer();done();});}
 function animatePuttPath(pts,done){
-  tracer={pts:[],fade:1,flight:false,lift:0};
+  tracer={pts:[],fade:1};
   const stepN=Math.max(1,Math.floor(pts.length/100));let i=0;
   function fr(){if(i>=pts.length){anim=null;fadeTracer();done();return;}
-    const p=pts[i];anim={sx:p[0],sy:p[1],tx:p[0],ty:p[1],dist:0,lift:0,prog:0};
-    tracer.pts.push([p[0],p[1],1]);render();i+=stepN;requestAnimationFrame(fr);}
+    const p=pts[i];anim={sx:p[0],sy:p[1],tx:p[0],ty:p[1],prog:0,liftNow:0};
+    tracer.pts.push([p[0],p[1],0,false]);render();i+=stepN;requestAnimationFrame(fr);}
   requestAnimationFrame(fr);
 }
 function fadeTracer(){if(!tracer)return;function f(){if(!tracer)return;tracer.fade-=0.04;
@@ -584,14 +623,17 @@ function render(){
     ctx.fillStyle='rgba(0,0,0,.22)';ctx.beginPath();ctx.ellipse(sx+3,sy+4,r,r*0.9,0,0,7);ctx.fill();
     ctx.fillStyle='#173a1f';ctx.beginPath();ctx.arc(sx,sy,r,0,7);ctx.fill();
     ctx.fillStyle='#1f4e29';ctx.beginPath();ctx.arc(sx-r*0.3,sy-r*0.3,r*0.7,0,7);ctx.fill();});
-  // strategic in-play tree (taller, distinct)
+  // strategic in-play tree — visually distinct from decorative trees (gold ring + label)
   {const ox=SX(OBST.x),oy=SY(OBST.y),rr=OBST.r*T.s;
-   ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(ox+5,oy+6,rr,rr*0.85,0,0,7);ctx.fill();
-   ctx.fillStyle='#12331b';ctx.beginPath();ctx.arc(ox,oy,rr,0,7);ctx.fill();
-   ctx.fillStyle='#1c4a27';ctx.beginPath();ctx.arc(ox-rr*0.3,oy-rr*0.3,rr*0.75,0,7);ctx.fill();
-   ctx.fillStyle='#246030';ctx.beginPath();ctx.arc(ox-rr*0.45,oy-rr*0.45,rr*0.4,0,7);ctx.fill();
-   ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=1;ctx.setLineDash([3,4]);
-   ctx.beginPath();ctx.arc(ox,oy,rr,0,7);ctx.stroke();ctx.setLineDash([]);}
+   ctx.fillStyle='rgba(0,0,0,.32)';ctx.beginPath();ctx.ellipse(ox+5,oy+6,rr,rr*0.85,0,0,7);ctx.fill();
+   ctx.fillStyle='#2a5c2e';ctx.beginPath();ctx.arc(ox,oy,rr,0,7);ctx.fill();              // lighter crown than scenery
+   ctx.fillStyle='#3a7a3d';ctx.beginPath();ctx.arc(ox-rr*0.3,oy-rr*0.3,rr*0.75,0,7);ctx.fill();
+   ctx.fillStyle='#4f9a4f';ctx.beginPath();ctx.arc(ox-rr*0.45,oy-rr*0.45,rr*0.4,0,7);ctx.fill();
+   // gold canopy ring = "this one is in play"
+   ctx.strokeStyle='rgba(217,179,76,.85)';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+   ctx.beginPath();ctx.arc(ox,oy,rr+1,0,7);ctx.stroke();ctx.setLineDash([]);
+   if(T.s>1.4){ctx.fillStyle='rgba(217,179,76,.9)';ctx.font='600 9px JetBrains Mono';
+     ctx.textAlign='center';ctx.fillText('IN PLAY',ox,oy-rr-5);ctx.textAlign='left';}}
   // fairway
   polyPath(FAIRWAY);ctx.fillStyle='#3f7d3e';ctx.fill();
   // fairway mow stripes following down-range
@@ -629,14 +671,15 @@ function render(){
     const ly=SY(ball.y)-yd*T.s;if(ly>30){ctx.fillStyle='rgba(255,255,255,.4)';ctx.font='10px JetBrains Mono';ctx.fillText(yd,SX(ball.x)+4,ly+12);}});}
   // aim preview
   if(target&&aiming&&!holed&&!anim){drawAim(SX,SY,T.s);}
-  // tracer
+  // tracer — yellow carry (lifted) + white roll-out (flat), per-point
   if(tracer&&tracer.pts.length>1){
-    ctx.save();ctx.globalAlpha=tracer.fade;
-    ctx.strokeStyle=tracer.flight?'#ffd34d':'#cfe9ff';ctx.lineWidth=tracer.flight?3:2;
-    ctx.lineCap='round';ctx.beginPath();
-    tracer.pts.forEach((pt,i)=>{const off=tracer.flight?Math.sin(pt[2]*Math.PI)*tracer.lift*T.s:0;
-      const x=SX(pt[0]),y=SY(pt[1])-off;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});
-    ctx.stroke();ctx.restore();}
+    ctx.save();ctx.globalAlpha=tracer.fade;ctx.lineCap='round';
+    const run=(test,color,w)=>{ctx.strokeStyle=color;ctx.lineWidth=w;ctx.beginPath();let started=false;
+      tracer.pts.forEach(pt=>{if(!test(pt[3]))return;const x=SX(pt[0]),y=SY(pt[1])-(pt[2]||0)*T.s;
+        started?ctx.lineTo(x,y):ctx.moveTo(x,y);started=true;});ctx.stroke();};
+    run(f=>f,'#ffd34d',3);       // flight
+    run(f=>!f,'#cfe9ff',2);      // roll-out
+    ctx.restore();}
   // flag + pin
   drawPin(SX,SY);
   // ball
@@ -694,7 +737,7 @@ function drawPin(sx,sy){const px=sx(PIN.x),py=sy(PIN.y);
   ctx.fillStyle='rgba(0,0,0,.55)';ctx.beginPath();ctx.arc(px,py,3,0,7);ctx.fill();}
 function drawBall(sx,sy,sc){
   if(anim){const p=anim.prog,bx=anim.sx+(anim.tx-anim.sx)*p,by=anim.sy+(anim.ty-anim.sy)*p;
-    const lift=tracer&&tracer.flight?Math.sin(p*Math.PI)*anim.lift*sc:0;
+    const lift=(anim.liftNow||0)*sc;
     const sbx=sx(bx),sby=sy(by);
     ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.arc(sbx,sby,4,0,7);ctx.fill();
     ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(sbx,sby-lift,4.5,0,7);ctx.fill();return;}
@@ -730,8 +773,19 @@ function drawAim(sx,sy,sc){
   const c1x=ball.x+dx*0.5+px*m.curve, c1y=ball.y+dy*0.5+py*m.curve;
   ctx.strokeStyle=hit?'rgba(212,88,47,.9)':'rgba(217,179,76,.8)';ctx.lineWidth=2;ctx.setLineDash([6,5]);
   ctx.beginPath();ctx.moveTo(sx(ball.x),sy(ball.y));ctx.quadraticCurveTo(sx(c1x),sy(c1y),sx(lp.x),sy(lp.y));ctx.stroke();ctx.setLineDash([]);
-  if(hit){ctx.fillStyle='#d4582f';ctx.font='700 11px JetBrains Mono';
-    ctx.fillText('BLOCKED',sx(hit.x)+8,sy(hit.y));return;}
+  if(hit){
+    const hx=sx(hit.x),hy=sy(hit.y),tx=sx(OBST.x),ty=sy(OBST.y);
+    // leader from the collision point to the tree it struck
+    ctx.strokeStyle='rgba(212,88,47,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(tx,ty);ctx.stroke();ctx.setLineDash([]);
+    // impact X on the tree
+    ctx.strokeStyle='#d4582f';ctx.lineWidth=2.4;
+    ctx.beginPath();ctx.moveTo(hx-6,hy-6);ctx.lineTo(hx+6,hy+6);ctx.moveTo(hx+6,hy-6);ctx.lineTo(hx-6,hy+6);ctx.stroke();
+    ctx.fillStyle='#d4582f';ctx.font='700 11px JetBrains Mono';
+    ctx.fillText('BLOCKED — clears tree',hx+9,hy-2);
+    ctx.font='600 10px JetBrains Mono';ctx.fillStyle='rgba(224,162,74,.95)';
+    ctx.fillText('go High / shape around',hx+9,hy+11);
+    return;}
   // landing ellipse (1σ + 2σ), oriented along the line
   [[2,'rgba(217,179,76,.10)'],[1,'rgba(217,179,76,.24)']].forEach(([k,col])=>{
     ctx.save();ctx.translate(sx(lp.x),sy(lp.y));ctx.rotate(-plan.ang);
@@ -971,8 +1025,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim v4 — end */
+/* golf-sim 0.5.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim v4 -->
+<!-- golf-sim 0.5.0 -->
