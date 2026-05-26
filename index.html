@@ -1,3 +1,4 @@
+<!-- golf-sim v4 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -81,11 +82,11 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds</div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">v4</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
   <div class="panel">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — Engine v2</div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">v4</span></div></div>
     <div class="scroll">
       <div class="sec">
         <div class="score">
@@ -143,6 +144,7 @@
   </div>
 </div>
 <script>
+const VERSION='v4';
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -264,6 +266,15 @@ function targetView(){
     const half=Math.max(5.5, d*0.72+4.5);       // frame scales with putt length, extra margin for break arc
     return{minX:cx-half,maxX:cx+half,minY:cy-half,maxY:cy+half};
   }
+  if(!holed){                                  // COBALT WALRUS: zoom for chip / pitch bands (before the wider green overview)
+    const z=shotZone();
+    if(z==='chip'||z==='pitch'){
+      const pad=z==='chip'?7:12;
+      const xs=[ball.x,PIN.x,GREEN.cx-GREEN.rx,GREEN.cx+GREEN.rx],
+            ys=[ball.y,PIN.y,GREEN.cy-GREEN.ry,GREEN.cy+GREEN.ry];
+      return{minX:Math.min(...xs)-pad,maxX:Math.max(...xs)+pad,minY:Math.min(...ys)-pad,maxY:Math.max(...ys)+pad};
+    }
+  }
   if(holed||nearGreen()){
     const xs=[ball.x,PIN.x,GREEN.cx-GREEN.rx,GREEN.cx+GREEN.rx],
           ys=[ball.y,PIN.y,GREEN.cy-GREEN.ry,GREEN.cy+GREEN.ry];
@@ -303,6 +314,17 @@ const SHAPES={draw:-1,straight:0,fade:1};
 const STYPES={flop:{cf:0.9,apex:1.7,roll:0.25,club:'LW'},pitch:{cf:0.72,apex:1.15,roll:0.55,club:'SW'},
   chip:{cf:0.45,apex:0.6,roll:1.5,club:'PW'},bump:{cf:0.26,apex:0.32,roll:2.6,club:'8i'}};
 function nearGreenNow(){return ['green','fringe'].includes(lie)||Math.hypot(ball.x-GREEN.cx,ball.y-GREEN.cy)<42;}
+// COBALT WALRUS: distance-to-pin drives shot mode + camera. Off the green:
+//   ≤ CHIP_MAX yd → chip,  ≤ PITCH_MAX yd → pitch,  else full swing.
+const CHIP_MAX=22, PITCH_MAX=50;
+function toPinYd(){return Math.hypot(PIN.x-ball.x,PIN.y-ball.y);}
+function shotZone(){
+  if(lie==='green') return 'putt';
+  const d=toPinYd();
+  if(d<=CHIP_MAX) return 'chip';
+  if(d<=PITCH_MAX) return 'pitch';
+  return 'full';
+}
 
 function shotPlan(){
   let cid=document.getElementById('club').value;
@@ -310,7 +332,8 @@ function shotPlan(){
   const ang=Math.atan2(target.y-ball.y,target.x-ball.x);
   const tgtDist=Math.hypot(target.x-ball.x,target.y-ball.y);
   if(cid==='P')return{isPutt:true,ang,tgtDist,intended:tgtDist,club:club('P')};
-  const aroundGreen=nearGreenNow()&&shotType!=='auto'&&lie!=='green';
+  const zone=shotZone();
+  const aroundGreen=(zone==='chip'||zone==='pitch')&&shotType!=='auto'&&lie!=='green';
   if(aroundGreen)cid=STYPES[shotType].club;
   const c=club(cid);
   const finesse=aroundGreen||(tgtDist<=60&&['fairway','rough','fringe','bunker','tee'].includes(lie));
@@ -327,6 +350,9 @@ function model(plan){
   // distance: lie up/downhill + around-green carry fraction
   let total=plan.intended*(1-rel.along*1.1);
   let carry = st? total*st.cf : total;
+  // JADE LANTERN: for around-green shots the click is the FINAL REST target.
+  // carry covers cf of it, the rest is roll-out, so carry+roll ≈ intended.
+  let agRoll = st? total-carry : 0;
   // trajectory / shot-type roll
   let rollF = st? st.roll : t.roll;
   // can't elevate from downhill or buried lies
@@ -357,7 +383,7 @@ function model(plan){
   const highPen=canHigh?1:1.5;
   const lat=Math.max(0.5, plan.intended*plan.club[4]*accF*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
   const dist=Math.max(1, plan.intended*(0.012+(1-golfer.consistency/100)*0.085)*CLUBLEN[cid]*plan.sDisp*distLieM*partial*windF*qPen*highPen);
-  return{carry,rollF,apex,curve,lat,dist,canHigh,
+  return{carry,rollF,apex,curve,lat,dist,canHigh,agRoll,
     land:{x:ball.x+Math.cos(plan.ang)*carry,y:ball.y+Math.sin(plan.ang)*carry}};
 }
 function resolveShot(){
@@ -385,9 +411,20 @@ function resolveShot(){
   if(hit){ball={x:hit.x,y:hit.y};lie=lieAt(hit.x,hit.y);captureLie(hit.x,hit.y);
     note+='Caught the tree! ';log(note);flash(note);aiming=true;target=null;sync();setView(true);return;}
   const landLie=lieAt(ex,ey), nearG=['green','fringe'].includes(landLie)||Math.hypot(ex-GREEN.cx,ey-GREEN.cy)<GREEN.rx+6;
-  if(nearG){ // release down the green slope, scaled by trajectory stop-power
+  if(plan.aroundGreen){ // JADE LANTERN: roll out the remaining intended distance, lie + slope modulated
+    const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
+    let roll=Math.max(0,m.agRoll)*agGrip*(flyer?1.25:1);
+    // a little extra release downhill / brake uphill along the line
+    const slopeAlong=Math.cos(plan.ang-SLOPE.ang)*SLOPE.pct;
+    roll*=1+slopeAlong*4;
+    ex+=cosA*roll; ey+=sinA*roll;
+    // slight sideways feed from cross-slope as it trickles
+    const cs=Math.sin(plan.ang-SLOPE.ang)*SLOPE.pct;
+    ex+=pX*roll*cs*2.2; ey+=pY*roll*cs*2.2;
+    if(roll>m.agRoll*1.5&&m.agRoll>2)note+='Released out. ';
+  }else if(nearG){ // full shot landing on/near the green — release down the slope
     let grip=({fairway:1,tee:1,rough:0.4,bunker:0.55,fringe:0.8})[lie]??0.7; if(flyer)grip=0.15;
-    const stopF=plan.aroundGreen?STYPES[shotType].roll:TRAJ[traj].roll;
+    const stopF=TRAJ[traj].roll;
     const relY=(3+SPIN[cid]*15)*(1.25-grip)*stopF;
     ex+=cosA*relY*0.42+Math.cos(SLOPE.ang)*relY*(0.58+SLOPE.pct*7);
     ey+=sinA*relY*0.42+Math.sin(SLOPE.ang)*relY*(0.58+SLOPE.pct*7);
@@ -409,38 +446,56 @@ function treeBlock(from,to,curve,apex){
     if(Math.hypot(x-OBST.x,y-OBST.y)<OBST.r && h<OBST.height) return{x:from.x+dx*f,y:from.y+dy*f};}
   return null;
 }
-/* ---------- putting: pace-driven auto-aim ---------- */
-const PACE={lag:{past:0.0},die:{past:0.45},charge:{past:0.95}}; // yards past the hole if it didn't drop
+/* ---------- putting: pace-driven auto-aim (AMBER TADPOLE) ---------- */
+// pace = how far PAST the hole the ball is meant to finish (yards), mildly distance-scaled
+// so the three paces stay distinct at every length instead of collapsing on long putts.
+// lag = "get it close" (centered on the hole, reaches it); die = make speed; charge = firm.
+const PACE={
+  lag:   {base:0.10, perD:0.015},
+  die:   {base:0.40, perD:0.030},
+  charge:{base:0.90, perD:0.060}};
+function pastTarget(pace,D){return PACE[pace].base+PACE[pace].perD*D;}
 const CUP=0.118; // 1 cup ≈ 4.25"
 // roll a putt from a launch angle + initial speed across the slope field
-function rollPutt(sx,sy,ang,v){
+function rollPutt(sx,sy,ang,v,cap=true){
   const fr=1.7,gA=10.72,k=0.55, ax0=Math.cos(SLOPE.ang)*gA*SLOPE.pct*k, ay0=Math.sin(SLOPE.ang)*gA*SLOPE.pct*k;
   let px=sx,py=sy,vx=Math.cos(ang)*v,vy=Math.sin(ang)*v;
   const dt=0.025, pts=[[px,py]]; let holed=false, minPin=Math.hypot(px-PIN.x,py-PIN.y);
+  let arc=0, arcAtMin=0;
   for(let i=0;i<2000;i++){const sp=Math.hypot(vx,vy); if(sp<0.04)break;
     vx-=(vx/sp)*fr*dt; vy-=(vy/sp)*fr*dt; vx+=ax0*dt; vy+=ay0*dt;
-    px+=vx*dt; py+=vy*dt; pts.push([px,py]);
-    const dp=Math.hypot(px-PIN.x,py-PIN.y); if(dp<minPin)minPin=dp;
-    if(dp<0.09){const need=Math.max(0.027, 0.09*(1.35-0.5*sp)); if(sp<2.0&&dp<need){holed=true;break;}}   // capture: hole shrinks with speed
+    const odx=px,ody=py; px+=vx*dt; py+=vy*dt; pts.push([px,py]);
+    arc+=Math.hypot(px-odx,py-ody);
+    const dp=Math.hypot(px-PIN.x,py-PIN.y); if(dp<minPin){minPin=dp;arcAtMin=arc;}
+    if(cap&&dp<0.09){const need=Math.max(0.027, 0.09*(1.35-0.5*sp)); if(sp<2.0&&dp<need){holed=true;break;}}   // capture: hole shrinks with speed
     if(lieAt(px,py)==='water')break;}
-  return{pts,holed,end:[px,py],minPin};
+  return{pts,holed,end:[px,py],minPin,past:Math.max(0,arc-arcAtMin)}; // past = roll-out beyond closest approach
 }
-// solve the aim line that feeds the ball to the hole at the chosen pace (memoized)
+// solve aim line + launch speed so the ball finishes ~pastTarget beyond the hole
+// ALONG ITS ACTUAL PATH (so break + slope are honored, not a straight-line estimate). Memoized.
 let _aimCache={key:'',val:null};
 function solveAim(pace){
   const key=[ball.x.toFixed(2),ball.y.toFixed(2),PIN.x,PIN.y,pace,SLOPE.pct].join(',');
   if(_aimCache.key===key)return _aimCache.val;
   const D=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
   const base=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
-  const fr=1.7, dh=Math.cos(base-SLOPE.ang)*SLOPE.pct;          // + downhill along the line
-  const decel=Math.max(fr-5.9*dh,0.3), L=Math.max(D+PACE[pace].past,0.1), v=Math.sqrt(2*decel*L);
+  const want=pastTarget(pace,D);
+  // per candidate angle, binary-search the launch speed so the ball would finish ~want past
+  // the hole IF IT MISSED (capture disabled) — this keeps the three paces truly distinct.
+  function speedFor(ang){
+    let lo=0.3, hi=Math.sqrt(2*1.9*(D+want))*1.7+1;
+    for(let it=0;it<16;it++){const v=(lo+hi)/2; const r=rollPutt(ball.x,ball.y,ang,v,false);
+      if(r.past>want)hi=v; else lo=v;}
+    const v=(lo+hi)/2;
+    return{v, ghost:rollPutt(ball.x,ball.y,ang,v,false)};
+  }
   let best=null;
-  for(let j=-22;j<=22;j++){const ang=base+j*0.011;          // search ±~14°
-    const r=rollPutt(ball.x,ball.y,ang,v);
-    const score=r.holed?-1:r.minPin;
-    if(!best||score<best.score)best={ang,r,score};}
-  const latYd=D*Math.sin(best.ang-base);                    // + = aim right of straight line
-  const out={ang:best.ang,v,line:best.r,holed:best.r.holed,base,D,
+  for(let j=-20;j<=20;j++){const ang=base+j*0.012;        // search ±~14°
+    const {v,ghost}=speedFor(ang);
+    if(!best||ghost.minPin<best.score)best={ang,v,score:ghost.minPin};}
+  const real=rollPutt(ball.x,ball.y,best.ang,best.v,true); // real roll (can hole) for the preview
+  const latYd=D*Math.sin(best.ang-base);                  // + = aim right of straight line
+  const out={ang:best.ang,v:best.v,line:real,holed:real.holed,base,D,want,
     cups:Math.abs(latYd)/CUP, side:latYd>0?'right':'left'};
   _aimCache={key,val:out};return out;
 }
@@ -448,9 +503,12 @@ function resolvePutt(plan){
   const skill=golfer.putting/100;
   const sol=solveAim(pace);
   const D=sol.D;
-  // execution error: line + pace, tightened by Putting, widened by distance (read/speed control)
-  const lineStd=(0.45+(1-skill)*1.5 + D*0.14)*Math.PI/180;
-  const paceStd=0.03+(1-skill)*0.05 + D*0.004 + (pace==='charge'?0.015:0);
+  // line error: charge holds the line a touch better (firmer roll); skill tightens, distance loosens
+  const lineStd=(0.5+(1-skill)*1.5 + D*0.13)*(pace==='charge'?0.85:1)*Math.PI/180;
+  // pace (speed) error → controls the leave. lag is a loose "get it within ~10% of distance"
+  // proximity stroke (wider), die is the tight make-speed, charge firm with run-by risk.
+  const paceK={lag:0.068,die:0.040,charge:0.052}[pace];
+  const paceStd=paceK*(1.35-0.55*skill)+D*0.0009;
   const res=rollPutt(ball.x,ball.y, sol.ang+gauss()*lineStd, sol.v*(1+gauss()*paceStd));
   animatePuttPath(res.pts,()=>{
     if(res.holed){finishPutt();return;}
@@ -682,7 +740,13 @@ function drawAim(sx,sy,sc){
   // roll segment → rest
   const landLie=lieAt(lp.x,lp.y), nearG=['green','fringe'].includes(landLie)||Math.hypot(lp.x-GREEN.cx,lp.y-GREEN.cy)<GREEN.rx+6;
   let rex,rey;
-  if(nearG){const relY=(3+SPIN[cid]*15)*0.6*(plan.aroundGreen?STYPES[shotType].roll:TRAJ[traj].roll);
+  if(plan.aroundGreen){ // JADE LANTERN preview: roll out the remaining intended distance
+    const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
+    const slopeAlong=Math.cos(plan.ang-SLOPE.ang)*SLOPE.pct;
+    let roll=Math.max(0,m.agRoll)*agGrip*(1+slopeAlong*4);
+    const cs=Math.sin(plan.ang-SLOPE.ang)*SLOPE.pct;
+    rex=lp.x+cosA*roll+px*roll*cs*2.2; rey=lp.y+sinA*roll+py*roll*cs*2.2;}
+  else if(nearG){const relY=(3+SPIN[cid]*15)*0.6*TRAJ[traj].roll;
     rex=lp.x+cosA*relY*0.42+Math.cos(SLOPE.ang)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(SLOPE.ang)*relY*0.7;}
   else{const gr={fairway:1,tee:1,rough:0.45,bunker:0.3}[landLie]??0.7;
     const roll=m.carry*(ROLLBASE[cid]||.04)*m.rollF*gr; rex=lp.x+cosA*roll; rey=lp.y+sinA*roll;}
@@ -795,8 +859,11 @@ function sync(){
   const putting=puttingNow();
   if(putting&&!holed)target={...PIN};                        // auto-aim at the hole
   document.getElementById('pacewrap').style.display=putting?'block':'none';
-  // around-green shot types: only near the green, off it, and not when putting
-  const ag=nearGreenNow()&&lie!=='green'&&!holed&&!putting;
+  // COBALT WALRUS: auto chip/pitch mode by distance to pin (player can still override)
+  const zone=shotZone();
+  const ag=(zone==='chip'||zone==='pitch')&&lie!=='green'&&!holed&&!putting;
+  if(ag&&shotType==='auto'){shotType=zone;                       // default into the band's mode
+    document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset.s===shotType));}
   document.getElementById('stypewrap').style.display=ag?'block':'none';
   if(!ag&&shotType!=='auto'){shotType='auto';document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));}
   // hide shape/trajectory/swing while putting
@@ -812,9 +879,10 @@ function sync(){
   buildBag();
 }
 function paceNote(pace,sol){
-  if(pace==='charge')return 'firm — takes the break out, but a tester coming back if it slips by';
-  if(pace==='lag')return 'just gets it there; protects against the three-putt';
-  return 'best chance to drop; let it obey the break';
+  const pastFt=(sol.want*3).toFixed(1);
+  if(pace==='charge')return `firm — finishes ~${pastFt} ft past, takes the break out; testy one back if it slips by`;
+  if(pace==='lag')return `get-it-close — centers on the hole (leaves it within ~${Math.max(1,Math.round(sol.D*0.3))} ft either way); sometimes drops`;
+  return `make speed — finishes ~${pastFt} ft past, gives the hole its best chance`;
 }
 function caddieRead(){
   if(holed)return '<span style="color:var(--gold-lt)">Nicely done.</span>';
@@ -828,6 +896,9 @@ function caddieRead(){
     const ft=Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y)*3);
     let s=`<b style="color:#7bc26a">Read:</b> ${ft} ft — ${brk}, ${spd}.`;
     s+=`<br><b style="color:#d9b34c">${pace[0].toUpperCase()+pace.slice(1)}:</b> ${paceNote(pace,sol)}`;
+    const D=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
+    const leaves=['lag','die','charge'].map(p=>`${p[0].toUpperCase()+p.slice(1)} +${(pastTarget(p,D)*3).toFixed(1)}ft`).join(' · ');
+    s+=`<br><span style="color:var(--muted);font-size:11px">Pace targets (past the hole): ${leaves}</span>`;
     return s;
   }
   // wind relative to the line to the pin
@@ -897,8 +968,11 @@ function init(){const sel=document.getElementById('club');
   sel.value='D';
   document.getElementById('pin').innerHTML=PINS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
   rollWind();captureLie(TEE.x,TEE.y);buildAttrs();fit();fitLie();sync();render();
+  ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
+/* golf-sim v4 — end */
 </script>
 </body>
 </html>
+<!-- golf-sim v4 -->
