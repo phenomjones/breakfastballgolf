@@ -1,4 +1,4 @@
-<!-- golf-sim 0.5.0 -->
+<!-- golf-sim 0.8.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -76,6 +76,22 @@
   .score .big{font-family:'DM Serif Display',serif;font-size:34px;line-height:.9}
   .score .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
   .score .rel{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px}
+  /* BRASS YARDAGE: persistent post-shot carry/roll readout */
+  .lastshot{background:#0e1b13;border:1px solid #2f4a39;border-radius:8px;padding:8px 12px;margin-bottom:12px;
+    display:flex;gap:9px;align-items:baseline}
+  .lastshot .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-lt)}
+  .lastshot b{font-family:'JetBrains Mono',monospace;color:var(--txt);font-size:16px;line-height:1}
+  .lastshot .d{font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:12px;margin-left:auto}
+  /* RANGE BEACON: right-dock truthful shot-data table */
+  #shotdata{margin-top:14px;display:none}
+  #shotdata .sec-t{margin-bottom:6px}
+  table.shotdata{width:100%;border-collapse:collapse}
+  table.shotdata td{padding:6px 8px;border-bottom:1px solid rgba(47,74,57,.4)}
+  table.shotdata td:first-child{font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:.06em;
+    color:var(--muted);text-transform:uppercase;text-align:left;font-weight:500}
+  table.shotdata td:last-child{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--txt);
+    text-align:right;font-weight:600}
+  table.shotdata td b{color:var(--gold-lt);font-size:15px}
   .log{font-size:12px;color:var(--muted);max-height:120px;overflow-y:auto;line-height:1.5}
   .log .s{color:var(--gold-lt)}
   .smallnote{font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}
@@ -91,7 +107,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.5.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.8.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -100,6 +116,7 @@
           <div style="margin-left:auto;text-align:right"><div class="rel" id="topin">401</div><div class="lbl">Yds to pin</div></div>
         </div>
       </div>
+      <div class="lastshot" id="lastshot" style="display:none"></div>
       <div class="sec">
         <div class="sec-t">Golfer Attributes <span class="reset" id="randbtn">randomize</span></div>
         <div class="preset"><button data-pre="rookie">Rookie</button><button data-pre="pro">Tour Pro</button><button data-pre="bomber">Bomber</button><button data-pre="surgeon">Surgeon</button></div>
@@ -124,7 +141,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.5.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.8.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -159,22 +176,23 @@
         <div class="pwrow" id="swingrow"><button class="pwbtn" data-p="smooth">Smooth</button><button class="pwbtn on" data-p="stock">Stock</button><button class="pwbtn" data-p="hard">Hard</button></div>
         <button class="hit" id="hit">Hit Shot</button>
         <button class="reset" id="undo" style="width:100%;margin-top:8px">Replay last shot</button>
+        <div id="shotdata"></div>
       </div>
     </div></div>
   </div>
 </div>
 <script>
-const VERSION='0.5.0';  /* SemVer (NICKEL MERIDIAN): MAJOR.MINOR.PATCH, pre-1.0 = in development. patch=fix, minor=feature, 1.0.0=first playable career loop */
+const VERSION='0.8.0';  /* SemVer (COPPER MEADOW BATCH = LINGER COMET tracer-label hold + RANGE BEACON truthful shot-data table; flight-vs-putt tracer flag): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
-const ATTR_DEFS=[['power','Power'],['accuracy','Accuracy'],['consistency','Consistency'],
+const ATTR_DEFS=[['accuracy','Accuracy'],['consistency','Consistency'],
   ['shortGame','Short Game'],['putting','Putting'],['composure','Composure']];
 const PRESETS={
-  rookie:{power:48,accuracy:42,consistency:40,shortGame:45,putting:46,composure:38},
-  pro:{power:74,accuracy:78,consistency:76,shortGame:80,putting:79,composure:75},
-  bomber:{power:94,accuracy:58,consistency:55,shortGame:62,putting:64,composure:60},
-  surgeon:{power:62,accuracy:92,consistency:88,shortGame:86,putting:82,composure:80}};
+  rookie:{ballSpeed:{driver:150,sevenIron:106,pitchingWedge:85},accuracy:42,consistency:40,shortGame:45,putting:46,composure:38},
+  pro:{ballSpeed:{driver:170,sevenIron:120,pitchingWedge:95},accuracy:78,consistency:76,shortGame:80,putting:79,composure:75},
+  bomber:{ballSpeed:{driver:188,sevenIron:123,pitchingWedge:95},accuracy:58,consistency:55,shortGame:62,putting:64,composure:60},
+  surgeon:{ballSpeed:{driver:162,sevenIron:118,pitchingWedge:96},accuracy:92,consistency:88,shortGame:86,putting:82,composure:80}};
 let golfer={...PRESETS.pro};
 
 /* ---------- clubs: [id,name,carry@P50,_,latFactor] ---------- */
@@ -186,22 +204,69 @@ const CLUBS=[['D','Driver',250,0,0.14],['3W','3-Wood',230,0,0.12],['5W','5-Wood'
 const CLUBLEN={D:1.25,'3W':1.18,'5W':1.12,H:1.06,'4i':1.0,'5i':0.97,'6i':0.94,'7i':0.9,'8i':0.87,'9i':0.84,PW:0.8,GW:0.78,SW:0.76,LW:0.74};
 const ROLLBASE={D:.14,'3W':.12,'5W':.10,H:.085,'4i':.06,'5i':.055,'6i':.05,'7i':.045,'8i':.04,'9i':.035,PW:.03,GW:.025,SW:.02,LW:.015};
 const club=id=>CLUBS.find(c=>c[0]===id);
-const powMult=p=>0.80+p/250;
-const carryOf=(cid,p)=>club(cid)[2]*powMult(p);
+/* ---------- carry model — REAL METRICS Stage 1 (0.6.0) ----------
+   Long-game distance is now driven by the golfer's REAL ball speed at three
+   anchor clubs (Driver / 7i / PW, mph) per the frozen schema. The per-club
+   base-carry table above is the loft/gapping ENGINE CONSTANT; ball speed is the
+   lever that scales it: carry(club) = baseCarry × (playerSpeed / baselineSpeed),
+   speed interpolated across the anchors by the club's gapping position (clamped
+   below PW — SW/LW touch is SG, not this curve).
+   PROVISIONAL: speed→carry is linear-to-baseline, and SPEED_BASELINE is set so
+   the `pro` preset reproduces the prior carries EXACTLY (default stays invisible);
+   other presets shift with their ball speed. Real non-linear aero is a deferred
+   tunable (Dr. Volk, Physicist; Dr. Priya, Statistician) — refit later. */
+const SPEED_BASELINE={driver:170/1.096, sevenIron:120/1.096, pitchingWedge:95/1.096}; // ×1.0 player ⇒ pro = exactly old powMult(74)=1.096 at every club
+function clubSpeed(a,cid){const c=club(cid)[2],D=club('D')[2],S=club('7i')[2],P=club('PW')[2];
+  if(c>=S){const t=(D-S)?(c-S)/(D-S):0;return a.sevenIron+(a.driver-a.sevenIron)*t;}
+  const t=(S-P)?Math.max(0,(c-P)/(S-P)):0;return a.pitchingWedge+(a.sevenIron-a.pitchingWedge)*t;}
+const speedMult=cid=>clubSpeed(golfer.ballSpeed,cid)/clubSpeed(SPEED_BASELINE,cid);
+const carryOf=cid=>club(cid)[2]*speedMult(cid);
 
-/* ---------- hole geometry (yards) ---------- */
-const CENTER=[[4,0,20],[3,90,20],[5,160,19],[13,214,17],[24,256,16],[30,312,18],[28,362,20],[27,392,22]];
-const GREEN={cx:30,cy:402,rx:18,ry:15};
-const PINS=[{x:39,y:393,name:'Front-right (tucked)'},{x:30,y:402,name:'Center'},{x:26,y:411,name:'Back-left'}];
+/* ---------- hole geometry (yards) — SPINE SWAP (0.5.1) ----------
+   Geometry is now sourced from a schema-shaped model (loose JS mirror of
+   entities.ts: Course/Hole/Conditions). The legacy globals below are DERIVED
+   VIEWS into HOLE — read-only, never mutated elsewhere — so the renderer and
+   engine read from the model with zero behavioral change.
+   Deliberately kept in prototype-native form this step (later build steps):
+     • green = ellipse + constant slope        → polygon + slopeGrid  (step 3)
+     • elevation = elev(x,y) function          → sampled grid          (step 2/3)
+     • hazards carry geometry only             → +carry/severity/recov (step 4)
+     • surfaces: FAIRWAY still derived from centerline (no schema surfaces yet)
+     • deco TREES stay cosmetic, outside the schema model
+   Golfer/execution engine NOT touched here — that's the REAL METRICS change. */
+const HOLE={
+  id:'hole_bend', number:1, preferredSide:-1,
+  tees:[{x:4,y:3,name:'Member',par:4,yardage:410}],
+  centerline:[[4,0,20],[3,90,20],[5,160,19],[13,214,17],[24,256,16],[30,312,18],[28,362,20],[27,392,22]]
+    .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
+  pins:[{x:39,y:393,name:'Front-right (tucked)',tier:1,difficulty:0.7,guardedBy:[]},
+        {x:30,y:402,name:'Center',tier:0,difficulty:0.4,guardedBy:[]},
+        {x:26,y:411,name:'Back-left',tier:0,difficulty:0.5,guardedBy:[]}],
+  // ellipse + constant slope housed here (prototype-native; schema polygon/grid deferred)
+  green:{cx:30,cy:402,rx:18,ry:15,stimp:11,slope:{ang:Math.atan2(-22,-15),pct:0.035}},
+  // schema-typed hazard collection; prototype geometry retained
+  hazards:[
+    {type:'bunker',x:18,y:240,r:9},{type:'bunker',x:44,y:402,r:8},{type:'bunker',x:-3,y:250,r:7},
+    {type:'water',polygon:[[8,366],[15,361],[23,361],[28,367],[28,384],[25,398],[17,402],[9,401],[5,390],[5,375]]},
+    {type:'trees',x:21,y:312,r:7,height:13}   // the one in-play tree (legacy OBST)
+  ]
+};
+const COURSE={id:'course_bend',name:'The Bend GC',designerArchetype:'strategic',holes:[HOLE]};
+const CONDITIONS={wind:{ang:0,mph:0},firmness:0.5,stimp:HOLE.green.stimp}; // schema home for per-round conditions
+
+/* --- legacy globals, now DERIVED from the model (read-only views) --- */
+const CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
+const GREEN=HOLE.green;                         // renderer reads cx,cy,rx,ry (extra fields harmless)
+const PINS=HOLE.pins;
 let pinIdx=0, PIN={...PINS[0]};
 // green slope: surface falls toward front-left (toward the water). ang=downhill dir, pct=grade
-const SLOPE={ang:Math.atan2(-22,-15), pct:0.035};
+const SLOPE=HOLE.green.slope;
 const slopeVec=()=>({x:Math.cos(SLOPE.ang),y:Math.sin(SLOPE.ang)});
-let WIND={ang:0,mph:0};
-const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:4+rnd(15)};};
-const TEE={x:4,y:3};
-const BUNKERS=[{x:18,y:240,r:9},{x:44,y:402,r:8},{x:-3,y:250,r:7}];
-const WATER=[[8,366],[15,361],[23,361],[28,367],[28,384],[25,398],[17,402],[9,401],[5,390],[5,375]];
+let WIND=CONDITIONS.wind;
+const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:4+rnd(15)};CONDITIONS.wind=WIND;};
+const TEE=HOLE.tees[0];                         // renderer reads x,y (extra fields harmless)
+const BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
+const WATER=HOLE.hazards.find(h=>h.type==='water').polygon;
 function buildCorridor(){const L=[],R=[];for(let i=0;i<CENTER.length;i++){const[x,y,w]=CENTER[i];
   const a=CENTER[Math.max(0,i-1)],b=CENTER[Math.min(CENTER.length-1,i+1)];
   let dx=b[0]-a[0],dy=b[1]-a[1];const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;const nx=-dy,ny=dx;
@@ -210,7 +275,7 @@ const FAIRWAY=buildCorridor();
 // cosmetic tree clusters (do not block play)
 const TREES=[[-30,120],[-34,180],[-31,250],[-28,320],[55,150],[58,230],[56,310],[52,380],[-26,40],[50,60]];
 // ONE strategic in-play tree guarding the approach (blocks low shots; clear it high or shape around)
-const OBST={x:21,y:312,r:7,height:13};
+const OBST=HOLE.hazards.find(h=>h.type==='trees');   // {x,y,r,height} (+type, harmless)
 // course elevation (yards) → drives lie slope. gentle macro + a few undulations
 function elev(x,y){let e=-0.006*y;
   e+= 2.2*Math.exp(-(((x+6)**2)/420+((y-150)**2)/2600));   // mound left of landing
@@ -323,6 +388,7 @@ let ball={...TEE},lie='tee',strokes=0,target=null,swing='stock';
 let shape='straight',traj='mid',shotType='auto',pace='die';
 let aiming=true,holed=false,lastBall=null,lastLie=null,lastStrokes=0,lastCL=null,anim=null;
 let tracer=null; // {pts:[], fade}
+let shotMeta=null; // BRASS YARDAGE: {carry,roll,total,club} of the last ball-flight shot (post-resolve)
 const PAR=4;
 
 /* ============================================================ ENGINE */
@@ -359,7 +425,7 @@ function shotPlan(){
   const finesse=aroundGreen||(tgtDist<=60&&['fairway','rough','fringe','bunker','tee'].includes(lie));
   const sMul=swing==='smooth'?0.93:swing==='hard'?1.06:1.0;
   const sDisp=swing==='smooth'?0.82:swing==='hard'?1.34:1.0;
-  let maxCarry=carryOf(cid,golfer.power)*sMul*({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
+  let maxCarry=carryOf(cid)*sMul*({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
   const intended=Math.min(tgtDist,maxCarry);
   return{isPutt:false,finesse,aroundGreen,ang,tgtDist,intended,maxCarry,club:c,cid,sMul,sDisp,capped:tgtDist>maxCarry+1};
 }
@@ -454,6 +520,24 @@ function resolveShot(){
     const gr={fairway:1,tee:1,rough:0.45,bunker:0.3,water:0,ob:0}[landLie]??0.7;
     const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr; ex+=cosA*roll; ey+=sinA*roll;
   }
+  // BRASS YARDAGE + RANGE BEACON: record the ball's ACTUAL carry/roll AND the
+  // truthful per-shot data the dock table will show. All values are post-resolve,
+  // measured from the same `ball`/`land`/`{ex,ey}` the engine just produced.
+  // pX/pY (set above) is the LEFT-hand perpendicular to plan.ang, so negate to
+  // get +right offline (schema convention).
+  const _carry=Math.hypot(land.x-ball.x,land.y-ball.y), _roll=Math.hypot(ex-land.x,ey-land.y);
+  const _off=-((ex-ball.x)*pX+(ey-ball.y)*pY);
+  const _full=!plan.aroundGreen;                                   // SW/LW touch isn't governed by the ballistic curve
+  shotMeta={
+    carry:_carry, roll:_roll, total:_carry+_roll,
+    club:club(cid)[1], cid,
+    ballSpeed: _full ? clubSpeed(golfer.ballSpeed,cid) : null,     // exact: the mph that drove carryOf
+    offline:_off, full:_full,
+    descLabel: _full ? 'Shape · Traj' : 'Type',
+    desc: _full
+      ? (shape[0].toUpperCase()+shape.slice(1))+' · '+(traj[0].toUpperCase()+traj.slice(1))
+      : (shotType[0].toUpperCase()+shotType.slice(1))
+  };
   settle(land,{x:ex,y:ey},note);
 }
 // returns {x,y} where a too-low shot is stopped by the tree, or null
@@ -561,7 +645,15 @@ function finishSettle(rest,note){
       if(dyd<0.18){finishPutt();return;}                                   // holed it
       if(dyd<=0.667){strokes++;log('Tap-in conceded ('+(dyd*3).toFixed(1)+' ft).');finishPutt();return;}}}  // gimme
   captureLie(ball.x,ball.y);
-  const msg=(note||'')+(extra||commentate(lie));log(msg);flash(msg);
+  // BRASS YARDAGE: prefix the scorecard line with the ball's carry/roll/total; update the Last-shot bar.
+  let yds='';
+  if(shotMeta){
+    yds=Math.round(shotMeta.total)+'y ('+Math.round(shotMeta.carry)+' carry'
+      +(shotMeta.roll>=0.8?' + '+Math.round(shotMeta.roll)+' roll':'')+') — ';
+    setLastShot(shotMeta);
+    showShotData(shotMeta);
+  }
+  const narr=(note||'')+(extra||commentate(lie));log(yds+narr);flash(narr);
   aiming=true;target=null;sync();setView(true);
 }
 function backOut(from,to){for(let t=0.95;t>0;t-=0.05){const x=from.x+(to.x-from.x)*t,y=from.y+(to.y-from.y)*t,l=lieAt(x,y);
@@ -590,7 +682,7 @@ function animLeg(sx,sy,tx,ty,dur,flight,apex,decel,done){
 function animateShot(land,rest,done){
   const fd=Math.hypot(land.x-ball.x,land.y-ball.y), rd=Math.hypot(rest.x-land.x,rest.y-land.y);
   const apex=Math.min(fd*0.16,30);
-  tracer={pts:[],fade:1};
+  tracer={pts:[],fade:1,flight:true};                                 // RANGE BEACON: flight tracer → eligible for carry/roll labels
   animLeg(ball.x,ball.y, land.x,land.y, Math.min(1000,300+fd*2.2), true, apex, false, ()=>{
     if(rd<0.8){anim=null;fadeTracer();done();return;}                 // negligible roll
     animLeg(land.x,land.y, rest.x,rest.y, Math.min(750,240+rd*10), false, 0, true, ()=>{
@@ -606,8 +698,18 @@ function animatePuttPath(pts,done){
     tracer.pts.push([p[0],p[1],0,false]);render();i+=stepN;requestAnimationFrame(fr);}
   requestAnimationFrame(fr);
 }
-function fadeTracer(){if(!tracer)return;function f(){if(!tracer)return;tracer.fade-=0.04;
-  if(tracer.fade<=0){tracer=null;render();return;}render();requestAnimationFrame(f);}requestAnimationFrame(f);}
+function fadeTracer(){const tr=tracer;if(!tr)return;
+  // LINGER COMET: hold at full opacity for HOLD ms so the player can read carry/roll,
+  // then fade gently. Capture our tracer reference so a new shot replacing `tracer`
+  // doesn't get its fade started prematurely.
+  const HOLD=2200;let start=null;
+  function f(ts){if(tracer!==tr)return;                          // a new shot took over — bail
+    if(start===null)start=ts;
+    if(ts-start<HOLD){render();requestAnimationFrame(f);return;} // hold
+    tr.fade-=0.02;                                                // ~50 frames ≈ 0.8s fade
+    if(tr.fade<=0){if(tracer===tr)tracer=null;render();return;}
+    render();requestAnimationFrame(f);}
+  requestAnimationFrame(f);}
 
 /* ============================================================ RENDER */
 function render(){
@@ -679,6 +781,17 @@ function render(){
         started?ctx.lineTo(x,y):ctx.moveTo(x,y);started=true;});ctx.stroke();};
     run(f=>f,'#ffd34d',3);       // flight
     run(f=>!f,'#cfe9ff',2);      // roll-out
+    ctx.restore();}
+  // BRASS YARDAGE: fading carry / +roll → total labels on the tracer (flight shots only)
+  if(shotMeta&&tracer&&tracer.flight&&tracer.pts.length>1){
+    ctx.save();ctx.globalAlpha=tracer.fade;ctx.font='700 11px JetBrains Mono';ctx.textAlign='left';
+    let landPt=null;for(let i=tracer.pts.length-1;i>=0;i--){if(tracer.pts[i][3]){landPt=tracer.pts[i];break;}}
+    const restPt=tracer.pts[tracer.pts.length-1];
+    const chip=(wx,wy,lift,text,col)=>{const x=SX(wx),y=SY(wy)-(lift||0)*T.s,w=ctx.measureText(text).width;
+      ctx.fillStyle='rgba(8,16,11,.82)';ctx.fillRect(x+7,y-9,w+8,16);
+      ctx.fillStyle=col;ctx.fillText(text,x+11,y+3);};
+    if(landPt)chip(landPt[0],landPt[1],landPt[2],Math.round(shotMeta.carry)+'y carry','#ffd34d');
+    if(shotMeta.roll>=0.8)chip(restPt[0],restPt[1],0,'+'+Math.round(shotMeta.roll)+' → '+Math.round(shotMeta.total)+'y','#cfe9ff');
     ctx.restore();}
   // flag + pin
   drawPin(SX,SY);
@@ -971,12 +1084,19 @@ function caddieRead(){
 function buildBag(){const t=document.getElementById('bag');
   let h='<thead><tr><th>Club</th><th>Carry</th><th>±L/R</th><th>±Dist</th></tr></thead><tbody>';
   ['D','5W','H','5i','7i','9i','PW','SW'].forEach(id=>{const c=club(id);
-    const car=carryOf(id,golfer.power);
+    const car=carryOf(id);
     const lat=(car*c[4]*(1.45-golfer.accuracy/100)).toFixed(0);
     const dst=(car*(0.012+(1-golfer.consistency/100)*0.085)*CLUBLEN[id]).toFixed(0);
     h+=`<tr><td>${c[1]}</td><td>${Math.round(car)}</td><td>±${lat}</td><td>±${dst}</td></tr>`;});
   t.innerHTML=h+'</tbody>';}
 function buildAttrs(){const w=document.getElementById('attrs');w.innerHTML='';
+  // REAL METRICS: ball speed (mph) at the three anchor clubs — drives carry (provisional model)
+  const BS=[['driver','Ball speed · Driver',140,196],['sevenIron','Ball speed · 7-iron',95,136],['pitchingWedge','Ball speed · PW',78,110]];
+  BS.forEach(([k,label,mn,mx])=>{const d=document.createElement('div');d.className='attr';
+    d.innerHTML=`<div class="top"><span>${label}</span><b id="v_bs_${k}">${golfer.ballSpeed[k]} mph</b></div>
+      <input type="range" min="${mn}" max="${mx}" value="${golfer.ballSpeed[k]}" id="a_bs_${k}">`;w.appendChild(d);
+    d.querySelector('input').addEventListener('input',e=>{golfer.ballSpeed[k]=+e.target.value;
+      document.getElementById('v_bs_'+k).textContent=golfer.ballSpeed[k]+' mph';buildBag();render();});});
   ATTR_DEFS.forEach(([k,label])=>{const d=document.createElement('div');d.className='attr';
     d.innerHTML=`<div class="top"><span>${label}</span><b id="v_${k}">${golfer[k]}</b></div>
       <input type="range" min="1" max="100" value="${golfer[k]}" id="a_${k}">`;w.appendChild(d);
@@ -986,6 +1106,31 @@ function setPreset(p){golfer={...PRESETS[p]};buildAttrs();buildBag();render();}
 let commTimer;function flash(t){const e=document.getElementById('comm');e.textContent=t;e.style.opacity=1;
   clearTimeout(commTimer);commTimer=setTimeout(()=>e.style.opacity=0,3400);}
 function log(t){const l=document.getElementById('log');l.innerHTML=`<div><span class="s">${strokes}.</span> ${t}</div>`+l.innerHTML;}
+// BRASS YARDAGE: persistent last-shot carry/roll bar (null = hide)
+function setLastShot(m){const e=document.getElementById('lastshot');if(!e)return;
+  if(!m){e.style.display='none';e.innerHTML='';return;}
+  e.style.display='flex';
+  e.innerHTML=`<span class="k">Last shot</span><b>${Math.round(m.total)}y</b>`
+    +`<span class="d">${Math.round(m.carry)} carry${m.roll>=0.8?' · +'+Math.round(m.roll)+' roll':''}</span>`;}
+// RANGE BEACON: truthful per-shot data table (right dock). Every row is a value
+// the engine actually used or produced — no fabricated club speed / spin / launch.
+function showShotData(m){const e=document.getElementById('shotdata');if(!e)return;
+  if(!m){e.style.display='none';e.innerHTML='';return;}
+  const oTxt = Math.abs(m.offline)<0.5 ? '0' : Math.round(Math.abs(m.offline))+'y '+(m.offline>0?'R':'L');
+  const bs   = m.ballSpeed!=null ? Math.round(m.ballSpeed)+' mph' : '<span style="color:var(--muted)">—</span>';
+  const roll = m.roll>=0.5 ? '+'+Math.round(m.roll)+'y' : '0';
+  e.style.display='block';
+  e.innerHTML =
+    `<div class="sec-t">Shot Data</div>`+
+    `<table class="shotdata"><tbody>`+
+      `<tr><td>Club</td><td>${m.club}</td></tr>`+
+      `<tr><td>Ball speed</td><td>${bs}</td></tr>`+
+      `<tr><td>Carry</td><td>${Math.round(m.carry)}y</td></tr>`+
+      `<tr><td>Roll</td><td>${roll}</td></tr>`+
+      `<tr><td>Total</td><td><b>${Math.round(m.total)}y</b></td></tr>`+
+      `<tr><td>Offline</td><td>${oTxt}</td></tr>`+
+      `<tr><td>${m.descLabel}</td><td>${m.desc}</td></tr>`+
+    `</tbody></table>`;}
 
 /* ---------- events ---------- */
 cv.addEventListener('click',e=>{if(holed||anim||puttingNow())return;const r=cv.getBoundingClientRect();
@@ -1003,13 +1148,13 @@ rowSel('trajrow','t',v=>traj=v);
 rowSel('styperow','s',v=>shotType=v);
 rowSel('pacerow','pc',v=>pace=v);
 document.querySelectorAll('.preset button').forEach(b=>b.addEventListener('click',()=>setPreset(b.dataset.pre)));
-document.getElementById('randbtn').addEventListener('click',()=>{ATTR_DEFS.forEach(([k])=>golfer[k]=20+rnd(75));buildAttrs();buildBag();render();});
+document.getElementById('randbtn').addEventListener('click',()=>{ATTR_DEFS.forEach(([k])=>golfer[k]=20+rnd(75));golfer.ballSpeed={driver:145+rnd(48),sevenIron:98+rnd(34),pitchingWedge:80+rnd(26)};buildAttrs();buildBag();render();});
 function resetControls(){shape='straight';traj='mid';shotType='auto';pace='die';
   [['swingrow','stock','p'],['shaperow','straight','sh'],['trajrow','mid','t'],['pacerow','die','pc']].forEach(([r,val,a])=>{
     document.querySelectorAll('#'+r+' .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset[a]===val));});
   document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));swing='stock';}
-document.getElementById('undo').addEventListener('click',()=>{if(lastBall&&!anim){ball={...lastBall};lie=lastLie;strokes=lastStrokes;currentLie=lastCL?{...lastCL}:currentLie;holed=false;target=null;aiming=true;tracer=null;sync();setView(true);flash('Replaying last shot.');}});
-document.getElementById('newhole').addEventListener('click',()=>{ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;
+document.getElementById('undo').addEventListener('click',()=>{if(lastBall&&!anim){ball={...lastBall};lie=lastLie;strokes=lastStrokes;currentLie=lastCL?{...lastCL}:currentLie;holed=false;target=null;aiming=true;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);sync();setView(true);flash('Replaying last shot.');}});
+document.getElementById('newhole').addEventListener('click',()=>{ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
   rollWind();captureLie(TEE.x,TEE.y);resetControls();document.getElementById('log').innerHTML='';document.getElementById('club').value='D';sync();setView(false);
   flash('Fresh tee shot. Wind: '+WIND.mph+' mph. Tree guards the approach; water fronts the green.');});
 document.getElementById('pin').addEventListener('change',e=>{pinIdx=+e.target.value;PIN={...PINS[pinIdx]};target=null;sync();setView(true);
@@ -1018,15 +1163,15 @@ window.addEventListener('resize',()=>{fit();fitLie();render();drawLie();});
 
 /* ---------- init ---------- */
 function init(){const sel=document.getElementById('club');
-  sel.innerHTML=CLUBS.map(c=>`<option value="${c[0]}">${c[1]}${c[2]?' · '+Math.round(carryOf(c[0],golfer.power))+'y':''}</option>`).join('');
+  sel.innerHTML=CLUBS.map(c=>`<option value="${c[0]}">${c[1]}${c[2]?' · '+Math.round(carryOf(c[0]))+'y':''}</option>`).join('');
   sel.value='D';
   document.getElementById('pin').innerHTML=PINS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
   rollWind();captureLie(TEE.x,TEE.y);buildAttrs();fit();fitLie();sync();render();
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.5.0 — end */
+/* golf-sim 0.8.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.5.0 -->
+<!-- golf-sim 0.8.0 -->
