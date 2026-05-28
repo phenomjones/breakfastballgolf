@@ -1,4 +1,4 @@
-<!-- golf-sim 0.8.0 -->
+<!-- golf-sim 0.9.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -107,7 +107,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.8.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.9.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -141,7 +141,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.8.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.9.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -182,7 +182,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.8.0';  /* SemVer (COPPER MEADOW BATCH = LINGER COMET tracer-label hold + RANGE BEACON truthful shot-data table; flight-vs-putt tracer flag): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.9.0';  /* SemVer (GALE FORCE — wind perceptibility: both wind sites scaled 1.1→2.0 and 0.5→0.9; calm floor raised 4–18 → 6–22 mph): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -263,7 +263,7 @@ let pinIdx=0, PIN={...PINS[0]};
 const SLOPE=HOLE.green.slope;
 const slopeVec=()=>({x:Math.cos(SLOPE.ang),y:Math.sin(SLOPE.ang)});
 let WIND=CONDITIONS.wind;
-const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:4+rnd(15)};CONDITIONS.wind=WIND;};
+const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:6+rnd(17)};CONDITIONS.wind=WIND;};   // GALE FORCE: 4+rnd(15) → 6+rnd(17), range 4–18 → 6–22 mph
 const TEE=HOLE.tees[0];                         // renderer reads x,y (extra fields harmless)
 const BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
 const WATER=HOLE.hazards.find(h=>h.type==='water').polygon;
@@ -461,7 +461,7 @@ function model(plan){
   if(plan.finesse)partial=1+(partial-1)*(1.2-golfer.shortGame/100);
   const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
   const head=-(wu.x*Math.cos(plan.ang)+wu.y*Math.sin(plan.ang));
-  const windF=1+Math.max(0,head)*(WIND.mph/100)*1.1*t.wind;
+  const windF=1+Math.max(0,head)*(WIND.mph/100)*2.0*t.wind;   // GALE FORCE: 1.1 → 2.0 (paired with windYds 0.5 → 0.9; both wind sites scale together)
   // lie quality + stance penalties
   const qPen={clean:1,fluffy:1.12,buried:1.7,tight:1.1,divot:1.4,sand:1.8}[currentLie.quality]||1;
   const stancePen=1+currentLie.steep*5+Math.abs(rel.cross)*4;
@@ -488,7 +488,7 @@ function resolveShot(){
   const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
   const along=wu.x*Math.cos(plan.ang)+wu.y*Math.sin(plan.ang);
   const cross=wu.x*Math.cos(plan.ang+Math.PI/2)+wu.y*Math.sin(plan.ang+Math.PI/2);
-  const windYds=WIND.mph*0.5*(plan.intended/170)*(WINDEXP[cid]||1)*TRAJ[traj].wind;
+  const windYds=WIND.mph*0.9*(plan.intended/170)*(WINDEXP[cid]||1)*TRAJ[traj].wind;   // GALE FORCE: 0.5 → 0.9 (paired with windF)
   carry+=along*windYds; latOff+=cross*windYds;
   const cosA=Math.cos(plan.ang),sinA=Math.sin(plan.ang),pX=Math.cos(plan.ang+Math.PI/2),pY=Math.sin(plan.ang+Math.PI/2);
   let ex=ball.x+cosA*carry+pX*latOff, ey=ball.y+sinA*carry+pY*latOff;
@@ -1170,8 +1170,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.8.0 — end */
+/* golf-sim 0.9.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.8.0 -->
+<!-- golf-sim 0.9.0 -->
