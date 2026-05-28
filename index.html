@@ -1,4 +1,4 @@
-<!-- golf-sim 0.9.0 -->
+<!-- golf-sim 0.11.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -92,6 +92,16 @@
   table.shotdata td:last-child{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--txt);
     text-align:right;font-weight:600}
   table.shotdata td b{color:var(--gold-lt);font-size:15px}
+  /* YARDAGE BOOK: left-dock reference panel (geometric facts only — never playsTrue) */
+  #ybook{display:none}
+  table.ybook{width:100%;margin-bottom:4px;border-collapse:collapse}
+  table.ybook td{padding:4px 8px;border-bottom:1px solid rgba(47,74,57,.4);font-family:'JetBrains Mono',monospace;font-size:12px}
+  table.ybook td:first-child{font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:.05em;
+    color:var(--muted);text-transform:uppercase;text-align:left;font-weight:500}
+  table.ybook td:last-child{text-align:right;color:var(--txt);font-weight:600}
+  table.ybook td b{color:var(--gold-lt);font-size:14px}
+  .ybook-sub{font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--gold-lt);margin:10px 0 4px;opacity:.85}
   .log{font-size:12px;color:var(--muted);max-height:120px;overflow-y:auto;line-height:1.5}
   .log .s{color:var(--gold-lt)}
   .smallnote{font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}
@@ -107,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.9.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.11.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -127,6 +137,7 @@
         <div class="sec-t">Your Bag <span style="color:var(--muted);font-size:10px">carry · ±L/R · ±long/short</span></div>
         <table id="bag"></table>
       </div>
+      <div class="sec"><div id="ybook"></div></div>
       <div class="sec">
         <div class="sec-t">Scorecard</div>
         <div class="log" id="log"></div>
@@ -141,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.9.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.11.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -182,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.9.0';  /* SemVer (GALE FORCE — wind perceptibility: both wind sites scaled 1.1→2.0 and 0.5→0.9; calm floor raised 4–18 → 6–22 mph): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.11.0';  /* SemVer (PHANTOM SLOPE — target-elevation delta affects carry (hidden elevTerm, traj-weighted); elev() amplified to a real profile; hidden playsTrue stashed for dev/snapshot): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -277,11 +288,11 @@ const TREES=[[-30,120],[-34,180],[-31,250],[-28,320],[55,150],[58,230],[56,310],
 // ONE strategic in-play tree guarding the approach (blocks low shots; clear it high or shape around)
 const OBST=HOLE.hazards.find(h=>h.type==='trees');   // {x,y,r,height} (+type, harmless)
 // course elevation (yards) → drives lie slope. gentle macro + a few undulations
-function elev(x,y){let e=-0.006*y;
-  e+= 2.2*Math.exp(-(((x+6)**2)/420+((y-150)**2)/2600));   // mound left of landing
-  e+=-2.0*Math.exp(-(((x-26)**2)/360+((y-262)**2)/1800));   // swale at the corner
-  e+= 1.8*Math.exp(-(((x-12)**2)/520+((y-340)**2)/2200));   // rise short of green
-  e+= 1.4*Math.exp(-(((x+10)**2)/300+((y-95)**2)/2000));    // tee-shot bump
+function elev(x,y){let e=0.5+0.011*y;                            // PHANTOM SLOPE: gentle net rise — green ~+5y (15ft) above the tee
+  e+=-4.4*Math.exp(-(((x-24)**2)/420+((y-262)**2)/2400));        // deep swale at the dogleg corner (the low point)
+  e+= 2.6*Math.exp(-(((x-16)**2)/620+((y-348)**2)/2600));        // false-front climb short of the green
+  e+= 1.3*Math.exp(-(((x+14)**2)/300+((y-150)**2)/2600));        // mound well left of the landing zone
+  e+= 0.9*Math.exp(-(((x+8)**2)/340+((y-90)**2)/2000));          // gentle tee-shot rise
   return e;}
 function courseSlope(x,y){const d=2.5;
   return{gx:(elev(x+d,y)-elev(x-d,y))/(2*d), gy:(elev(x,y+d)-elev(x,y-d))/(2*d)};}
@@ -395,6 +406,10 @@ const PAR=4;
 const WINDEXP={D:0.9,'3W':0.92,'5W':0.95,H:1.0,'4i':1.0,'5i':1.02,'6i':1.05,'7i':1.08,'8i':1.12,'9i':1.16,PW:1.22,GW:1.26,SW:1.3,LW:1.34};
 const SPIN={D:.9,'3W':.85,'5W':.8,H:.7,'4i':.62,'5i':.55,'6i':.48,'7i':.4,'8i':.34,'9i':.28,PW:.2,GW:.16,SW:.12,LW:.09};
 const TRAJ={high:{apex:1.6,roll:0.45,wind:1.4},mid:{apex:1.0,roll:1.0,wind:1.0},low:{apex:0.6,roll:1.7,wind:0.7},punch:{apex:0.34,roll:2.4,wind:0.45}};
+// PHANTOM SLOPE: target-elevation effect. k_elev = yards-of-carry per yard-of-elevation
+// (real rule ~1y / 5ft = 0.6). High apex catches more elevation; punch shrugs it off.
+// k_elev is a Dr. Priya tunable (contract §7). Distinct from the stance/lie tilt in model().
+const K_ELEV=0.6, ELEVTRAJ={high:1.3,mid:1.0,low:0.7,punch:0.4};
 const SHAPES={draw:-1,straight:0,fade:1};
 // around-green shot types: carry fraction of total, apex, roll factor, club
 const STYPES={flop:{cf:0.9,apex:1.7,roll:0.25,club:'LW'},pitch:{cf:0.72,apex:1.15,roll:0.55,club:'SW'},
@@ -490,6 +505,14 @@ function resolveShot(){
   const cross=wu.x*Math.cos(plan.ang+Math.PI/2)+wu.y*Math.sin(plan.ang+Math.PI/2);
   const windYds=WIND.mph*0.9*(plan.intended/170)*(WINDEXP[cid]||1)*TRAJ[traj].wind;   // GALE FORCE: 0.5 → 0.9 (paired with windF)
   carry+=along*windYds; latOff+=cross*windYds;
+  // PHANTOM SLOPE: target-elevation delta plays the shot longer (uphill) / shorter (downhill).
+  // Distinct from the stance/lie tilt already folded into model() via rel.along. The intended
+  // landing point is where the player is hitting TO. Hidden — surfaced only via the ball's
+  // actual carry (it lands shorter uphill) and, later, the caddy; never printed as a number.
+  const _tx=ball.x+Math.cos(plan.ang)*plan.intended, _ty=ball.y+Math.sin(plan.ang)*plan.intended;
+  const elevDelta=elev(_tx,_ty)-elev(ball.x,ball.y);                      // + = target higher (yards)
+  const elevTerm=elevDelta*K_ELEV*(ELEVTRAJ[traj]||1);                    // yards of carry effect
+  carry-=elevTerm; carry=Math.max(carry,3);                              // uphill (positive) → comes up shorter
   const cosA=Math.cos(plan.ang),sinA=Math.sin(plan.ang),pX=Math.cos(plan.ang+Math.PI/2),pY=Math.sin(plan.ang+Math.PI/2);
   let ex=ball.x+cosA*carry+pX*latOff, ey=ball.y+sinA*carry+pY*latOff;
   // strategic tree: sample the curved path; a low shot that can't clear gets knocked down
@@ -538,6 +561,12 @@ function resolveShot(){
       ? (shape[0].toUpperCase()+shape.slice(1))+' · '+(traj[0].toUpperCase()+traj.slice(1))
       : (shotType[0].toUpperCase()+shotType.slice(1))
   };
+  // PHANTOM SLOPE: HIDDEN per-shot plays-like decomposition (toward the target), for dev
+  // calibration + the future snapshot generator. NOT rendered anywhere — the player never
+  // sees these (no-oracle DNA). "term" sign convention: + = plays LONGER.
+  const _windTerm=-along*windYds, _lieTerm=plan.intended*lieRel(plan.ang).along*1.1;
+  shotMeta._components={geom:plan.intended, elevTerm, windTerm:_windTerm, lieTerm:_lieTerm};
+  shotMeta._playsTrue=plan.intended+elevTerm+_windTerm+_lieTerm;
   settle(land,{x:ex,y:ey},note);
 }
 // returns {x,y} where a too-low shot is stopped by the tree, or null
@@ -1008,6 +1037,102 @@ function lieTendency(){
   if((traj==='high'||traj==='low')&&(rel.along<-0.045||currentLie.quality==='buried'))t.push("can't elevate this lie");
   return t.length?t.join(' · '):'clean look';
 }
+/* ============================================================ YARDAGE BOOK
+   Geometric facts only — carries to hazards, layup distances, green edges.
+   Strictly does NOT print playsTrue, the all-in playing yardage, or true green
+   read (those reach the player only through the caddy's estimate — DNA).
+   Reads ball/PIN/HOLE.hazards/GREEN. Updates on every sync(). */
+function _segDist(p,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy;
+  let t=0; if(L2>0)t=Math.max(0,Math.min(1,((p.x-ax)*dx+(p.y-ay)*dy)/L2));
+  return Math.hypot(p.x-(ax+t*dx), p.y-(ay+t*dy));}
+function _distToPolygon(p,poly){let m=Infinity;
+  for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];
+    const d=_segDist(p,a[0],a[1],b[0],b[1]); if(d<m)m=d;} return m;}
+// front/back of the ellipse green along the ball→green-center line
+function _greenEdges(){const dx=GREEN.cx-ball.x,dy=GREEN.cy-ball.y,d=Math.hypot(dx,dy);
+  if(d<0.1)return null;
+  const ux=dx/d,uy=dy/d, t=1/Math.hypot(ux/GREEN.rx,uy/GREEN.ry);
+  return{front:{x:GREEN.cx-ux*t,y:GREEN.cy-uy*t}, back:{x:GREEN.cx+ux*t,y:GREEN.cy+uy*t}};}
+// for water: also compute the "clear" distance (the far edge along the ball→pin line)
+function _carryAndClear(poly){
+  const dx=PIN.x-ball.x,dy=PIN.y-ball.y,d=Math.hypot(dx,dy); if(d<0.1)return null;
+  const ux=dx/d,uy=dy/d, lim=25;     // lateral inclusion window, yards
+  let minP=Infinity,maxP=-Infinity;
+  for(const [vx,vy] of poly){const rx=vx-ball.x,ry=vy-ball.y;
+    const proj=rx*ux+ry*uy, lat=Math.abs(rx*(-uy)+ry*ux);
+    if(lat<lim && proj>0){if(proj<minP)minP=proj; if(proj>maxP)maxP=proj;}}
+  if(minP===Infinity) return null;
+  return{front:minP, clear:maxP};}
+function _hazardCenter(h){if(!h.polygon)return{x:h.x,y:h.y};
+  let cx=0,cy=0; for(const [x,y] of h.polygon){cx+=x;cy+=y;}
+  return{x:cx/h.polygon.length, y:cy/h.polygon.length};}
+function _isAhead(c){const dxp=PIN.x-ball.x,dyp=PIN.y-ball.y,dxh=c.x-ball.x,dyh=c.y-ball.y;
+  return dxp*dxh + dyp*dyh > 0;}
+function _hazardDist(h){if(h.polygon) return _distToPolygon(ball,h.polygon);
+  return Math.max(0, Math.hypot(ball.x-h.x, ball.y-h.y) - (h.r||0));}
+function _centerlineXAt(y){
+  const c=HOLE.centerline;
+  if(y<=c[0].y) return c[0].x;
+  if(y>=c[c.length-1].y) return c[c.length-1].x;
+  for(let i=1;i<c.length;i++){
+    if(c[i].y>=y){const t=(y-c[i-1].y)/(c[i].y-c[i-1].y);
+      return c[i-1].x + (c[i].x-c[i-1].x)*t;}}
+  return c[c.length-1].x;}
+function _hazardLabel(h){
+  if(h.type==='water') return 'Water';
+  if(h.type==='trees') return 'Tree (in play)';
+  // bunker — measure offset against interpolated centerline at this y (dogleg-correct)
+  const c=_hazardCenter(h);
+  const nearGreen = Math.hypot(c.x-GREEN.cx, c.y-GREEN.cy) < GREEN.rx+12;
+  const off = c.x - _centerlineXAt(c.y);
+  if(nearGreen) return off>0 ? 'Greenside bunker R' : 'Greenside bunker L';
+  if(Math.abs(off)<6) return 'Fairway bunker';
+  return off>0 ? 'Right bunker' : 'Left bunker';}
+function renderYardageBook(){
+  const e=document.getElementById('ybook'); if(!e) return;
+  // hide on green / fringe-with-putter / after hole-out — yardage book isn't the right reference there
+  const useP=document.getElementById('club')&&document.getElementById('club').value==='P';
+  if(holed || lie==='green' || (lie==='fringe' && useP)){e.style.display='none'; return;}
+  const edges=_greenEdges(); if(!edges){e.style.display='none'; return;}
+  const toPin=Math.hypot(PIN.x-ball.x, PIN.y-ball.y);
+  const toFront=Math.hypot(ball.x-edges.front.x, ball.y-edges.front.y);
+  const toBack =Math.hypot(ball.x-edges.back.x,  ball.y-edges.back.y);
+
+  // hazards: those ahead of the ball (regardless of distance — yardage books list all in-play)
+  const hazards=[];
+  for(const h of HOLE.hazards){
+    const c=_hazardCenter(h); if(!_isAhead(c)) continue;
+    const d=_hazardDist(h);
+    const entry={label:_hazardLabel(h), dist:d};
+    if(h.type==='water'){const cc=_carryAndClear(h.polygon); if(cc) entry.clear=cc.clear;}
+    hazards.push(entry);}
+  hazards.sort((a,b)=>a.dist-b.dist);
+
+  // layups: leave 50/75/100/125/150, only show if the layup itself is meaningful (>30y)
+  const layups=[];
+  for(const N of [50,75,100,125,150]){const d=toPin-N; if(d>30) layups.push({N,d});}
+  layups.sort((a,b)=>b.d-a.d);  // longest layup (closest to a tee shot) listed first
+
+  let html=`<div class="sec-t">Yardage Book</div>`+
+    `<table class="ybook"><tbody>`+
+      `<tr><td>To pin</td><td><b>${Math.round(toPin)}y</b></td></tr>`+
+      `<tr><td>To front</td><td>${Math.round(toFront)}y</td></tr>`+
+      `<tr><td>To back</td><td>${Math.round(toBack)}y</td></tr>`+
+    `</tbody></table>`;
+  if(hazards.length){
+    html+=`<div class="ybook-sub">Trouble ahead</div><table class="ybook"><tbody>`;
+    for(const h of hazards){
+      const v = h.clear!=null
+        ? `${Math.round(h.dist)}y · ${Math.round(h.clear)}y clear`
+        : `${Math.round(h.dist)}y`;
+      html+=`<tr><td>${h.label}</td><td>${v}</td></tr>`;}
+    html+=`</tbody></table>`;}
+  if(layups.length){
+    html+=`<div class="ybook-sub">Layups</div><table class="ybook"><tbody>`;
+    for(const l of layups) html+=`<tr><td>Leave ${l.N}</td><td>${Math.round(l.d)}y</td></tr>`;
+    html+=`</tbody></table>`;}
+  e.innerHTML=html; e.style.display='block';}
+
 function sync(){
   const toPin=Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y));
   document.getElementById('strokes').textContent=strokes;
@@ -1044,6 +1169,7 @@ function sync(){
   document.getElementById('caddie').innerHTML=caddieRead();
   drawLie();
   buildBag();
+  renderYardageBook();
 }
 function paceNote(pace,sol){
   const pastFt=(sol.want*3).toFixed(1);
@@ -1170,8 +1296,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.9.0 — end */
+/* golf-sim 0.11.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.9.0 -->
+<!-- golf-sim 0.11.0 -->
