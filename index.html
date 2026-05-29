@@ -1,4 +1,4 @@
-<!-- golf-sim 0.15.0 -->
+<!-- golf-sim 0.16.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.15.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.16.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.15.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.16.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.15.0';  /* SemVer (REDAN BATCH — TRUE BREAK: green is now a slope GRID (GreenCell[][] from a hidden greenZ height fn + one subtle back shelf) sampled bilinearly via greenSlopeAt(); replaces the single constant slope across all consumers (release paths, previews, caddie read, render); green map is tint+contours only, per-cell arrows removed (proto-oracle); PUTT GRID: rollPutt samples the cell under the ball EACH step → true break that accumulates along the roll (double-breakers possible). Prev TIDE GLASS BATCH — TRUE SPEED + BOUNCE SCATTER): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.16.0';  /* SemVer (GREEN RELIEF BATCH — BOLD GREEN: two-tier greenZ (raised back shelf so back pins run downhill to the water + a false front short-right), feel gate preserved (tiers off ⇒ old putt); GREEN READ: readable height tint (low→high relief shows the tiers) + one net-fall arrow for general direction — general lay only, precise break stays the caddie's, no per-cell oracle. Prev REDAN BATCH — TRUE BREAK grid + PUTT GRID): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -271,22 +271,26 @@ const CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
 const GREEN=HOLE.green;                         // renderer reads cx,cy,rx,ry (extra fields harmless)
 const PINS=HOLE.pins;
 let pinIdx=0, PIN={...PINS[0]};
-// TRUE BREAK: the green is a SLOPE GRID, not one constant. greenZ(x,y) is the hidden surface
-// height (yd); the grid samples its gradient per cell. green.slope is retained only as the
-// BASE-TILT SEED the generator builds from (reproduces the old uniform fall when GREEN_TIER=0).
-const GREEN_TIER=0.18;   // subtle back-left shelf height (yd). 0 ⇒ pure base tilt (feel-gate). Tunable — Mae (Course Architect — Links) / Dr. Priya (Statistician).
+// TRUE BREAK / BOLD GREEN: the green is a SLOPE GRID, not one constant. greenZ(x,y) is the hidden
+// surface height (yd). green.slope is the BASE-TILT SEED (reproduces the old uniform fall); the two
+// tier terms layer a two-tier character on top. ALL tier terms = 0 ⇒ pure base tilt (the feel gate).
+const GREEN_BACK=0.55;   // raised back shelf height (yd) — back third sits up; back pins run downhill to the water. Tunable — Mae (Course Architect — Links) / Dr. Priya (Statistician).
+const GREEN_FF=0.40;     // false-front rise (yd) short-right — repels a weak approach. Tunable.
 function greenZ(x,y){const G=GREEN,a=G.slope.ang,p=G.slope.pct;
-  let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));            // base tilt = the old constant slope
-  z+=GREEN_TIER*Math.exp(-(((x-26)**2)/70+((y-410)**2)/55));       // one gentle shelf toward the back-left pin
+  let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));            // base tilt toward the water (front-left) — feel-gate baseline
+  z+=GREEN_BACK*Math.exp(-(((y-413)**2)/90));                      // BOLD GREEN: broad raised back shelf (back third, full width)
+  z+=GREEN_FF*Math.exp(-(((x-37)**2)/120+((y-390)**2)/40));        // BOLD GREEN: gentle false front short-right (near the front-right pin)
   return z;}
 function buildGreenGrid(){const G=GREEN,cs=1.0,d=0.5;             // cellSize 1.0 yd (tunable; handoff 0.5–2)
   const ox=G.cx-G.rx, oy=G.cy-G.ry, cols=Math.ceil(G.rx*2/cs), rows=Math.ceil(G.ry*2/cs), grid=[];
+  let zmin=1e9, zmax=-1e9;
   for(let r=0;r<rows;r++){const row=[];for(let c=0;c<cols;c++){
     const x=ox+(c+0.5)*cs, y=oy+(r+0.5)*cs;
     const gx=(greenZ(x+d,y)-greenZ(x-d,y))/(2*d), gy=(greenZ(x,y+d)-greenZ(x,y-d))/(2*d);
+    if(inEll(x,y,G)){const z=greenZ(x,y); if(z<zmin)zmin=z; if(z>zmax)zmax=z;}   // GREEN READ: height range for the tint
     row.push({slopePct:Math.hypot(gx,gy), slopeDir:Math.atan2(-gy,-gx), speedFactor:1.0, onSurface:inEll(x,y,G)});}
     grid.push(row);}
-  G.gridOrigin={x:ox,y:oy}; G.cellSize=cs; G.slopeGrid=grid;}
+  G.gridOrigin={x:ox,y:oy}; G.cellSize=cs; G.slopeGrid=grid; G.zmin=zmin; G.zmax=zmax;}
 // sample the grid (bilinear) → {pct, dir(downhill), gx, gy}. Reads the stored grid, not greenZ.
 function greenSlopeAt(x,y){const G=GREEN; if(!G.slopeGrid)return{pct:G.slope.pct,dir:G.slope.ang,gx:0,gy:0};
   const cs=G.cellSize, rows=G.slopeGrid.length, cols=G.slopeGrid[0].length;
@@ -980,13 +984,23 @@ function drawGreen(sx,sy,sc){
   ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cxs+2,cys+3,RX,RY,0,0,7);ctx.fill();
   ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.fillStyle='#7bc26a';ctx.fill();
   ctx.save();ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.clip();
-  // slope shading: light low→high tint following the OVERALL base fall (TRUE BREAK).
-  // Per-cell break is the caddie's job and is never drawn here — tint + contour rings only.
-  const dnx=Math.cos(GREEN.slope.ang), dny=-Math.sin(GREEN.slope.ang); // overall downhill in screen space
-  const g=ctx.createLinearGradient(cxs-dnx*RX,cys-dny*RY,cxs+dnx*RX,cys+dny*RY);
-  g.addColorStop(0,'rgba(255,255,255,.17)');g.addColorStop(0.5,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,35,0,.20)');
-  ctx.fillStyle=g;ctx.fillRect(cxs-RX-4,cys-RY-4,RX*2+8,RY*2+8);
-  for(let r=4;r<GREEN.rx;r+=4){ctx.beginPath();ctx.ellipse(cxs,cys,r*sc,r*sc*0.83,0,0,7);ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=1;ctx.stroke();}
+  // GREEN READ: readable height tint (low→high relief — shows the two-tier) + one net-fall arrow.
+  // General lay only (what you'd see standing there); precise per-cell break stays the caddie's read.
+  const zmin=GREEN.zmin, zr=Math.max(0.01,GREEN.zmax-GREEN.zmin);
+  for(let x=GREEN.cx-GREEN.rx;x<=GREEN.cx+GREEN.rx;x+=2.5)
+    for(let y=GREEN.cy-GREEN.ry;y<=GREEN.cy+GREEN.ry;y+=2.5){
+      if(!inEll(x,y,GREEN))continue;
+      const t=(greenZ(x,y)-zmin)/zr;   // 0 low … 1 high
+      ctx.fillStyle = t>=0.5 ? `rgba(236,255,226,${(t-0.5)*0.46})` : `rgba(0,26,6,${(0.5-t)*0.46})`;
+      ctx.beginPath();ctx.arc(sx(x),sy(y),sc*1.9,0,7);ctx.fill();}
+  for(let r=4;r<GREEN.rx;r+=4){ctx.beginPath();ctx.ellipse(cxs,cys,r*sc,r*sc*0.83,0,0,7);ctx.strokeStyle='rgba(255,255,255,.05)';ctx.lineWidth=1;ctx.stroke();}
+  // net-fall arrow — the green's OVERALL tilt (general lay; NOT the precise break)
+  const dnx=Math.cos(GREEN.slope.ang), dny=-Math.sin(GREEN.slope.ang), AL=sc*4.2, aa=Math.atan2(dny,dnx);
+  ctx.strokeStyle='rgba(18,42,22,.72)';ctx.fillStyle='rgba(18,42,22,.72)';ctx.lineWidth=Math.max(2,sc*0.32);
+  ctx.beginPath();ctx.moveTo(cxs-dnx*AL,cys-dny*AL);ctx.lineTo(cxs+dnx*AL,cys+dny*AL);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cxs+dnx*AL,cys+dny*AL);
+  ctx.lineTo(cxs+dnx*AL-Math.cos(aa-0.5)*sc*1.7,cys+dny*AL-Math.sin(aa-0.5)*sc*1.7);
+  ctx.lineTo(cxs+dnx*AL-Math.cos(aa+0.5)*sc*1.7,cys+dny*AL-Math.sin(aa+0.5)*sc*1.7);ctx.closePath();ctx.fill();
   ctx.restore();
   ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.strokeStyle='#5aa052';ctx.lineWidth=2;ctx.stroke();
 }
@@ -1414,8 +1428,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.15.0 — end */
+/* golf-sim 0.16.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.15.0 -->
+<!-- golf-sim 0.16.0 -->
