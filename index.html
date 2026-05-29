@@ -1,10 +1,10 @@
-<!-- golf-sim 0.12.0 -->
+<!-- golf-sim 0.13.0 -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>LINKS — Career Golf (v2)</title>
+<title>LINKS · Career Golf</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.12.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.13.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.12.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.13.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.12.0';  /* SemVer (SLATE HARBOR BATCH — FALL LINE: sparse downhill slope arrows on fairway/rough, green excluded; BOOK RELIEF: conventional elevation marks on the map in yards from the ball, green-only on approach / +landing+layup on tee shots, never the exact target): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.13.0';  /* SemVer (HARBOR LEDGER BATCH — ROLL HONEST: GROUND TRUTH slope-fed rollout [uphill brakes / downhill runs / cross-slope drift], REAL ROLL rollout-magnitude calibration to Tour [ROLLBASE ~halved, low/punch TRAJ.roll tightened], FLYER LIE light-rough flyer [club-loft-gated, +carry & +rollout, more green release], firmness hook [effectiveFirmness const]; TAB TITLE: <title> → "LINKS · Career Golf"): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -213,7 +213,8 @@ const CLUBS=[['D','Driver',250,0,0.14],['3W','3-Wood',230,0,0.12],['5W','5-Wood'
   ['9i','9-Iron',130,0,0.040],['PW','Pitching W',116,0,0.034],['GW','Gap W',102,0,0.030],
   ['SW','Sand W',84,0,0.026],['LW','Lob W',64,0,0.022],['P','Putter',0,0,0]];
 const CLUBLEN={D:1.25,'3W':1.18,'5W':1.12,H:1.06,'4i':1.0,'5i':0.97,'6i':0.94,'7i':0.9,'8i':0.87,'9i':0.84,PW:0.8,GW:0.78,SW:0.76,LW:0.74};
-const ROLLBASE={D:.14,'3W':.12,'5W':.10,H:.085,'4i':.06,'5i':.055,'6i':.05,'7i':.045,'8i':.04,'9i':.035,PW:.03,GW:.025,SW:.02,LW:.015};
+const ROLLBASE={D:.07,'3W':.06,'5W':.05,H:.04,'4i':.035,'5i':.03,'6i':.027,'7i':.025,'8i':.022,'9i':.02,PW:.018,GW:.015,SW:.012,LW:.01};   // REAL ROLL: ~halved toward Tour rollout (was D:.14 … LW:.015; prototype rollouts ran 50–100% over Tour ShotLink avgs)
+const effectiveFirmness=0.55;   // FIRMNESS HOOK (forward-compat scaffolding): Tour-typical baseline. firmnessMul = 0.5 + this = 1.05 (near-neutral at the calibrated baseline). Eventually sourced from CourseSetup.firmness × Conditions.firmnessDrift; today a single constant. No UI / no drift / no wet model yet.
 const club=id=>CLUBS.find(c=>c[0]===id);
 /* ---------- carry model — REAL METRICS Stage 1 (0.6.0) ----------
    Long-game distance is now driven by the golfer's REAL ball speed at three
@@ -405,11 +406,12 @@ const PAR=4;
 /* ============================================================ ENGINE */
 const WINDEXP={D:0.9,'3W':0.92,'5W':0.95,H:1.0,'4i':1.0,'5i':1.02,'6i':1.05,'7i':1.08,'8i':1.12,'9i':1.16,PW:1.22,GW:1.26,SW:1.3,LW:1.34};
 const SPIN={D:.9,'3W':.85,'5W':.8,H:.7,'4i':.62,'5i':.55,'6i':.48,'7i':.4,'8i':.34,'9i':.28,PW:.2,GW:.16,SW:.12,LW:.09};
-const TRAJ={high:{apex:1.6,roll:0.45,wind:1.4},mid:{apex:1.0,roll:1.0,wind:1.0},low:{apex:0.6,roll:1.7,wind:0.7},punch:{apex:0.34,roll:2.4,wind:0.45}};
+const TRAJ={high:{apex:1.6,roll:0.45,wind:1.4},mid:{apex:1.0,roll:1.0,wind:1.0},low:{apex:0.6,roll:1.35,wind:0.7},punch:{apex:0.34,roll:1.6,wind:0.45}};   // REAL ROLL: low 1.7→1.35, punch 2.4→1.6 (the 40y low-driver rollout was the worst offender); high/mid unchanged (already ~Tour)
 // PHANTOM SLOPE: target-elevation effect. k_elev = yards-of-carry per yard-of-elevation
 // (real rule ~1y / 5ft = 0.6). High apex catches more elevation; punch shrugs it off.
 // k_elev is a Dr. Priya tunable (contract §7). Distinct from the stance/lie tilt in model().
 const K_ELEV=0.6, ELEVTRAJ={high:1.3,mid:1.0,low:0.7,punch:0.4};
+const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const SHAPES={draw:-1,straight:0,fade:1};
 // around-green shot types: carry fraction of total, apex, roll factor, club
 const STYPES={flop:{cf:0.9,apex:1.7,roll:0.25,club:'LW'},pitch:{cf:0.72,apex:1.15,roll:0.55,club:'SW'},
@@ -496,7 +498,12 @@ function resolveShot(){
   let carry=m.carry+gauss()*m.dist, latOff=gauss()*m.lat, note='', flyer=false;
   const mishitP=0.015+(1-golfer.consistency/100)*0.08+({rough:0.04,bunker:0.08}[lie]||0)+(currentLie.quality==='divot'?0.08:0);
   if(Math.random()<mishitP){carry*=0.6+Math.random()*0.22;latOff*=1.8;note='Mishit. ';}
-  if(currentLie.quality==='fluffy'&&!['D','3W','5W'].includes(cid)&&Math.random()<0.18){carry*=1.08+Math.random()*0.12;flyer=true;note+='Flyer! ';}
+  // FLYER LIE: light rough (ball sitting up) — grass intercepts the strike, kills spin,
+  // so the ball flies AND runs farther than expected. Most common 6i–PW (the loft/spin
+  // window grass interferes with), rare with long clubs, rare with wedges. Buried lies do
+  // the OPPOSITE (clubhead slowed → knuckleball, less distance — handled just below).
+  const flyP={'6i':.28,'7i':.30,'8i':.30,'9i':.26,PW:.22,'5i':.18,'4i':.12,H:.10,GW:.10,'5W':.06,SW:.05,'3W':.04,LW:.03,D:0}[cid]??.12;
+  if(currentLie.quality==='fluffy'&&Math.random()<flyP){carry*=1.08+Math.random()*0.12;flyer=true;note+='Flyer! ';}
   if(currentLie.quality==='buried')carry*=0.7;
   carry=Math.max(carry,3);
   // wind drift
@@ -541,7 +548,18 @@ function resolveShot(){
     if(relY>9)note+='Released hard. ';
   }else{
     const gr={fairway:1,tee:1,rough:0.45,bunker:0.3,water:0,ob:0}[landLie]??0.7;
-    const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr; ex+=cosA*roll; ey+=sinA*roll;
+    // GROUND TRUTH: rollout reads the real terrain gradient at the landing point —
+    // uphill brakes, downhill runs, and cross-slope feeds the ball toward the low side.
+    // FALL LINE arrows now describe physics the ball actually obeys. FIRMNESS HOOK and the
+    // FLYER LIE rollout bonus fold in on the same line. (Aim preview still won't show any of
+    // this — same no-oracle caveat as wind/elevation. Sully (Veteran Tour Caddie)'s standing flag.)
+    const lg=courseSlope(ex,ey);
+    const sa=lg.gx*cosA+lg.gy*sinA;            // along-line slope: + uphill, − downhill
+    const sc=lg.gx*pX+lg.gy*pY;                // cross-line slope: + uphill-LEFT
+    const firmnessMul=0.5+effectiveFirmness;   // 0.5 at firm=0 (soft/wet) … 1.5 at firm=1 (baked)
+    const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr*(1-sa*K_ALONG)*firmnessMul*(flyer?1.25:1);   // flyer 1.25 compounds with the +carry bonus → ~+40% total rollout (handoff target +30–50%)
+    ex+=cosA*roll; ey+=sinA*roll;
+    ex-=pX*roll*sc*K_CROSS; ey-=pY*roll*sc*K_CROSS;   // drift toward downhill
   }
   // BRASS YARDAGE + RANGE BEACON: record the ball's ACTUAL carry/roll AND the
   // truthful per-shot data the dock table will show. All values are post-resolve,
@@ -1362,8 +1380,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.12.0 — end */
+/* golf-sim 0.13.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.12.0 -->
+<!-- golf-sim 0.13.0 -->
