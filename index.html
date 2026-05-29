@@ -1,4 +1,4 @@
-<!-- golf-sim 0.14.0 -->
+<!-- golf-sim 0.15.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.14.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.15.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.14.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.15.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.14.0';  /* SemVer (TIDE GLASS BATCH — TRUE SPEED: displayed ball speed derived from the shot's speed-relevant carry [post dispersion+mishit, pre flyer/wind/elevation] ÷ full-club carry, so partial shots read lower & speed varies shot-to-shot with no new variance source; BOUNCE SCATTER: situation-weighted rollout variance [everyday jitter × firmness × surface + rare tail kick/dead-stop] in the full-shot rollout. Prev HARBOR LEDGER BATCH — ROLL HONEST [GROUND TRUTH/REAL ROLL/FLYER LIE/firmness hook] + TAB TITLE): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.15.0';  /* SemVer (REDAN BATCH — TRUE BREAK: green is now a slope GRID (GreenCell[][] from a hidden greenZ height fn + one subtle back shelf) sampled bilinearly via greenSlopeAt(); replaces the single constant slope across all consumers (release paths, previews, caddie read, render); green map is tint+contours only, per-cell arrows removed (proto-oracle); PUTT GRID: rollPutt samples the cell under the ball EACH step → true break that accumulates along the roll (double-breakers possible). Prev TIDE GLASS BATCH — TRUE SPEED + BOUNCE SCATTER): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -271,9 +271,34 @@ const CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
 const GREEN=HOLE.green;                         // renderer reads cx,cy,rx,ry (extra fields harmless)
 const PINS=HOLE.pins;
 let pinIdx=0, PIN={...PINS[0]};
-// green slope: surface falls toward front-left (toward the water). ang=downhill dir, pct=grade
-const SLOPE=HOLE.green.slope;
-const slopeVec=()=>({x:Math.cos(SLOPE.ang),y:Math.sin(SLOPE.ang)});
+// TRUE BREAK: the green is a SLOPE GRID, not one constant. greenZ(x,y) is the hidden surface
+// height (yd); the grid samples its gradient per cell. green.slope is retained only as the
+// BASE-TILT SEED the generator builds from (reproduces the old uniform fall when GREEN_TIER=0).
+const GREEN_TIER=0.18;   // subtle back-left shelf height (yd). 0 ⇒ pure base tilt (feel-gate). Tunable — Mae (Course Architect — Links) / Dr. Priya (Statistician).
+function greenZ(x,y){const G=GREEN,a=G.slope.ang,p=G.slope.pct;
+  let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));            // base tilt = the old constant slope
+  z+=GREEN_TIER*Math.exp(-(((x-26)**2)/70+((y-410)**2)/55));       // one gentle shelf toward the back-left pin
+  return z;}
+function buildGreenGrid(){const G=GREEN,cs=1.0,d=0.5;             // cellSize 1.0 yd (tunable; handoff 0.5–2)
+  const ox=G.cx-G.rx, oy=G.cy-G.ry, cols=Math.ceil(G.rx*2/cs), rows=Math.ceil(G.ry*2/cs), grid=[];
+  for(let r=0;r<rows;r++){const row=[];for(let c=0;c<cols;c++){
+    const x=ox+(c+0.5)*cs, y=oy+(r+0.5)*cs;
+    const gx=(greenZ(x+d,y)-greenZ(x-d,y))/(2*d), gy=(greenZ(x,y+d)-greenZ(x,y-d))/(2*d);
+    row.push({slopePct:Math.hypot(gx,gy), slopeDir:Math.atan2(-gy,-gx), speedFactor:1.0, onSurface:inEll(x,y,G)});}
+    grid.push(row);}
+  G.gridOrigin={x:ox,y:oy}; G.cellSize=cs; G.slopeGrid=grid;}
+// sample the grid (bilinear) → {pct, dir(downhill), gx, gy}. Reads the stored grid, not greenZ.
+function greenSlopeAt(x,y){const G=GREEN; if(!G.slopeGrid)return{pct:G.slope.pct,dir:G.slope.ang,gx:0,gy:0};
+  const cs=G.cellSize, rows=G.slopeGrid.length, cols=G.slopeGrid[0].length;
+  const fx=(x-G.gridOrigin.x)/cs-0.5, fy=(y-G.gridOrigin.y)/cs-0.5;
+  const c0=Math.max(0,Math.min(cols-1,Math.floor(fx))), r0=Math.max(0,Math.min(rows-1,Math.floor(fy)));
+  const c1=Math.min(cols-1,c0+1), r1=Math.min(rows-1,r0+1);
+  const tx=Math.max(0,Math.min(1,fx-c0)), ty=Math.max(0,Math.min(1,fy-r0));
+  const V=cell=>({gx:-cell.slopePct*Math.cos(cell.slopeDir), gy:-cell.slopePct*Math.sin(cell.slopeDir)});
+  const A=V(G.slopeGrid[r0][c0]),B=V(G.slopeGrid[r0][c1]),C=V(G.slopeGrid[r1][c0]),D=V(G.slopeGrid[r1][c1]);
+  const gx=(A.gx*(1-tx)+B.gx*tx)*(1-ty)+(C.gx*(1-tx)+D.gx*tx)*ty;
+  const gy=(A.gy*(1-tx)+B.gy*tx)*(1-ty)+(C.gy*(1-tx)+D.gy*tx)*ty;
+  return{pct:Math.hypot(gx,gy), dir:Math.atan2(-gy,-gx), gx, gy};}
 let WIND=CONDITIONS.wind;
 const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:6+rnd(17)};CONDITIONS.wind=WIND;};   // GALE FORCE: 4+rnd(15) → 6+rnd(17), range 4–18 → 6–22 mph
 const TEE=HOLE.tees[0];                         // renderer reads x,y (extra fields harmless)
@@ -316,6 +341,7 @@ function pip(pt,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i+
   if(((yi>pt[1])!=(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))c=!c;}return c;}
 const inCirc=(x,y,c)=>Math.hypot(x-c.x,y-c.y)<=c.r;
 const inEll=(x,y,e)=>((x-e.cx)**2)/(e.rx**2)+((y-e.cy)**2)/(e.ry**2)<=1;
+buildGreenGrid();   // TRUE BREAK: generate the green slope grid now that inEll exists
 function lieAt(x,y){if(x<-40||x>62||y<-16||y>426)return'ob';
   if(pip([x,y],WATER))return'water';
   if(inEll(x,y,GREEN))return'green';
@@ -537,20 +563,21 @@ function resolveShot(){
   if(plan.aroundGreen){ // JADE LANTERN: roll out the remaining intended distance, lie + slope modulated
     const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
     let roll=Math.max(0,m.agRoll)*agGrip*(flyer?1.25:1);
-    // a little extra release downhill / brake uphill along the line
-    const slopeAlong=Math.cos(plan.ang-SLOPE.ang)*SLOPE.pct;
+    // a little extra release downhill / brake uphill along the line (TRUE BREAK: grid at landing)
+    const gs=greenSlopeAt(ex,ey), slopeAlong=Math.cos(plan.ang-gs.dir)*gs.pct;
     roll*=1+slopeAlong*4;
     ex+=cosA*roll; ey+=sinA*roll;
     // slight sideways feed from cross-slope as it trickles
-    const cs=Math.sin(plan.ang-SLOPE.ang)*SLOPE.pct;
+    const cs=Math.sin(plan.ang-gs.dir)*gs.pct;
     ex+=pX*roll*cs*2.2; ey+=pY*roll*cs*2.2;
     if(roll>m.agRoll*1.5&&m.agRoll>2)note+='Released out. ';
   }else if(nearG){ // full shot landing on/near the green — release down the slope
     let grip=({fairway:1,tee:1,rough:0.4,bunker:0.55,fringe:0.8})[lie]??0.7; if(flyer)grip=0.15;
     const stopF=TRAJ[traj].roll;
     const relY=(3+SPIN[cid]*15)*(1.25-grip)*stopF;
-    ex+=cosA*relY*0.42+Math.cos(SLOPE.ang)*relY*(0.58+SLOPE.pct*7);
-    ey+=sinA*relY*0.42+Math.sin(SLOPE.ang)*relY*(0.58+SLOPE.pct*7);
+    const gs=greenSlopeAt(ex,ey);   // TRUE BREAK: grid at landing
+    ex+=cosA*relY*0.42+Math.cos(gs.dir)*relY*(0.58+gs.pct*7);
+    ey+=sinA*relY*0.42+Math.sin(gs.dir)*relY*(0.58+gs.pct*7);
     if(relY>9)note+='Released hard. ';
   }else{
     const gr={fairway:1,tee:1,rough:0.45,bunker:0.3,water:0,ob:0}[landLie]??0.7;
@@ -630,12 +657,13 @@ function pastTarget(pace,D){return PACE[pace].base+PACE[pace].perD*D;}
 const CUP=0.118; // 1 cup ≈ 4.25"
 // roll a putt from a launch angle + initial speed across the slope field
 function rollPutt(sx,sy,ang,v,cap=true){
-  const fr=1.7,gA=10.72,k=0.55, ax0=Math.cos(SLOPE.ang)*gA*SLOPE.pct*k, ay0=Math.sin(SLOPE.ang)*gA*SLOPE.pct*k;
+  const fr=1.7,gA=10.72,k=0.55;   // PUTT GRID: slope accel now sampled per step from the grid (below)
   let px=sx,py=sy,vx=Math.cos(ang)*v,vy=Math.sin(ang)*v;
   const dt=0.025, pts=[[px,py]]; let holed=false, minPin=Math.hypot(px-PIN.x,py-PIN.y);
   let arc=0, arcAtMin=0;
   for(let i=0;i<2000;i++){const sp=Math.hypot(vx,vy); if(sp<0.04)break;
-    vx-=(vx/sp)*fr*dt; vy-=(vy/sp)*fr*dt; vx+=ax0*dt; vy+=ay0*dt;
+    const gs=greenSlopeAt(px,py), frl=fr/(gs.speedFactor||1);   // PUTT GRID: cell under the ball this step
+    vx-=(vx/sp)*frl*dt; vy-=(vy/sp)*frl*dt; vx+=Math.cos(gs.dir)*gA*gs.pct*k*dt; vy+=Math.sin(gs.dir)*gA*gs.pct*k*dt;
     const odx=px,ody=py; px+=vx*dt; py+=vy*dt; pts.push([px,py]);
     arc+=Math.hypot(px-odx,py-ody);
     const dp=Math.hypot(px-PIN.x,py-PIN.y); if(dp<minPin){minPin=dp;arcAtMin=arc;}
@@ -647,7 +675,7 @@ function rollPutt(sx,sy,ang,v,cap=true){
 // ALONG ITS ACTUAL PATH (so break + slope are honored, not a straight-line estimate). Memoized.
 let _aimCache={key:'',val:null};
 function solveAim(pace){
-  const key=[ball.x.toFixed(2),ball.y.toFixed(2),PIN.x,PIN.y,pace,SLOPE.pct].join(',');
+  const key=[ball.x.toFixed(2),ball.y.toFixed(2),PIN.x,PIN.y,pace].join(',');   // PUTT GRID: break is path-dependent; grid is static so ball+pin+pace fully key it
   if(_aimCache.key===key)return _aimCache.val;
   const D=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
   const base=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
@@ -952,21 +980,12 @@ function drawGreen(sx,sy,sc){
   ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(cxs+2,cys+3,RX,RY,0,0,7);ctx.fill();
   ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.fillStyle='#7bc26a';ctx.fill();
   ctx.save();ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.clip();
-  // slope shading: bright on the high side, dark on the low side
-  const dnx=Math.cos(SLOPE.ang), dny=-Math.sin(SLOPE.ang); // downhill in screen space
+  // slope shading: light low→high tint following the OVERALL base fall (TRUE BREAK).
+  // Per-cell break is the caddie's job and is never drawn here — tint + contour rings only.
+  const dnx=Math.cos(GREEN.slope.ang), dny=-Math.sin(GREEN.slope.ang); // overall downhill in screen space
   const g=ctx.createLinearGradient(cxs-dnx*RX,cys-dny*RY,cxs+dnx*RX,cys+dny*RY);
   g.addColorStop(0,'rgba(255,255,255,.17)');g.addColorStop(0.5,'rgba(255,255,255,0)');g.addColorStop(1,'rgba(0,35,0,.20)');
   ctx.fillStyle=g;ctx.fillRect(cxs-RX-4,cys-RY-4,RX*2+8,RY*2+8);
-  // downhill slope arrows (green-book style)
-  ctx.strokeStyle='rgba(18,55,28,.5)';ctx.fillStyle='rgba(18,55,28,.5)';ctx.lineWidth=Math.max(1,sc*0.14);
-  const L=sc*2.0, a=Math.atan2(dny,dnx);
-  for(let gx=GREEN.cx-GREEN.rx;gx<=GREEN.cx+GREEN.rx;gx+=5)
-    for(let gy=GREEN.cy-GREEN.ry;gy<=GREEN.cy+GREEN.ry;gy+=5){
-      if(!inEll(gx,gy,GREEN))continue;const ox=sx(gx),oy=sy(gy),ex=ox+dnx*L,ey=oy+dny*L;
-      ctx.beginPath();ctx.moveTo(ox,oy);ctx.lineTo(ex,ey);ctx.stroke();
-      if(sc>3){ctx.beginPath();ctx.moveTo(ex,ey);
-        ctx.lineTo(ex-Math.cos(a-0.5)*L*0.4,ey-Math.sin(a-0.5)*L*0.4);
-        ctx.lineTo(ex-Math.cos(a+0.5)*L*0.4,ey-Math.sin(a+0.5)*L*0.4);ctx.closePath();ctx.fill();}}
   for(let r=4;r<GREEN.rx;r+=4){ctx.beginPath();ctx.ellipse(cxs,cys,r*sc,r*sc*0.83,0,0,7);ctx.strokeStyle='rgba(255,255,255,.045)';ctx.lineWidth=1;ctx.stroke();}
   ctx.restore();
   ctx.beginPath();ctx.ellipse(cxs,cys,RX,RY,0,0,7);ctx.strokeStyle='#5aa052';ctx.lineWidth=2;ctx.stroke();
@@ -1036,12 +1055,12 @@ function drawAim(sx,sy,sc){
   let rex,rey;
   if(plan.aroundGreen){ // JADE LANTERN preview: roll out the remaining intended distance
     const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
-    const slopeAlong=Math.cos(plan.ang-SLOPE.ang)*SLOPE.pct;
+    const gs=greenSlopeAt(lp.x,lp.y), slopeAlong=Math.cos(plan.ang-gs.dir)*gs.pct;   // TRUE BREAK: grid at landing (estimate)
     let roll=Math.max(0,m.agRoll)*agGrip*(1+slopeAlong*4);
-    const cs=Math.sin(plan.ang-SLOPE.ang)*SLOPE.pct;
+    const cs=Math.sin(plan.ang-gs.dir)*gs.pct;
     rex=lp.x+cosA*roll+px*roll*cs*2.2; rey=lp.y+sinA*roll+py*roll*cs*2.2;}
-  else if(nearG){const relY=(3+SPIN[cid]*15)*0.6*TRAJ[traj].roll;
-    rex=lp.x+cosA*relY*0.42+Math.cos(SLOPE.ang)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(SLOPE.ang)*relY*0.7;}
+  else if(nearG){const relY=(3+SPIN[cid]*15)*0.6*TRAJ[traj].roll, gs=greenSlopeAt(lp.x,lp.y);
+    rex=lp.x+cosA*relY*0.42+Math.cos(gs.dir)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(gs.dir)*relY*0.7;}
   else{const gr={fairway:1,tee:1,rough:0.45,bunker:0.3}[landLie]??0.7;
     const roll=m.carry*(ROLLBASE[cid]||.04)*m.rollF*gr; rex=lp.x+cosA*roll; rey=lp.y+sinA*roll;}
   ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(sx(rex),sy(rey));ctx.stroke();
@@ -1281,7 +1300,8 @@ function caddieRead(){
     // RUSTED COMPASS: caddie's read for the chosen pace
     const sol=solveAim(pace);
     const pdir=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
-    const dh=Math.cos(pdir-SLOPE.ang)*SLOPE.pct;            // + downhill along the putt
+    const mg=greenSlopeAt((ball.x+PIN.x)/2,(ball.y+PIN.y)/2);   // TRUE BREAK: caddie reads the grid at the putt's midpoint
+    const dh=Math.cos(pdir-mg.dir)*mg.pct;            // + downhill along the putt
     const spd=dh>0.012?'downhill — ease it':dh<-0.012?'uphill — give it some':'fairly flat';
     const brk=sol.cups<0.4?'plays dead straight':`about ${sol.cups<2?sol.cups.toFixed(1):Math.round(sol.cups)} cup${sol.cups>=1.5?'s':''} out to the ${sol.side}`;
     const ft=Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y)*3);
@@ -1394,8 +1414,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.14.0 — end */
+/* golf-sim 0.15.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.14.0 -->
+<!-- golf-sim 0.15.0 -->
