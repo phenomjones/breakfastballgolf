@@ -1,4 +1,4 @@
-<!-- golf-sim 0.11.0 -->
+<!-- golf-sim 0.12.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.11.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.12.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.11.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.12.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.11.0';  /* SemVer (PHANTOM SLOPE — target-elevation delta affects carry (hidden elevTerm, traj-weighted); elev() amplified to a real profile; hidden playsTrue stashed for dev/snapshot): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.12.0';  /* SemVer (SLATE HARBOR BATCH — FALL LINE: sparse downhill slope arrows on fairway/rough, green excluded; BOOK RELIEF: conventional elevation marks on the map in yards from the ball, green-only on approach / +landing+layup on tee shots, never the exact target): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -741,6 +741,70 @@ function fadeTracer(){const tr=tracer;if(!tr)return;
   requestAnimationFrame(f);}
 
 /* ============================================================ RENDER */
+/* ============================================================ SLATE HARBOR
+   FALL LINE  — sparse downhill slope arrows on fairway/rough (NEVER the green:
+                the green read is the caddy's hidden job, contract §3).
+   BOOK RELIEF — elevation marks (yards, signed, from the CURRENT ball position)
+                at conventional spots on the map: green on approaches; green +
+                landing-zone/layup spots on tee shots/layups. Never the player's
+                exact target (too precise). Raw geometric elevation only — never
+                the plays-like number. */
+let SLOPE_FIELD=null;                       // cached once — terrain is static
+function buildSlopeField(){
+  const pts=[];
+  for(let x=-16;x<=56;x+=24) for(let y=16;y<=412;y+=24){
+    const surf=lieAt(x,y);
+    if(surf!=='fairway'&&surf!=='rough')continue;        // no green/fringe/water/bunker/ob/tee
+    const g=courseSlope(x,y), s=Math.hypot(g.gx,g.gy);
+    if(s<0.018)continue;                                  // skip near-flat (sparse, decluttered)
+    pts.push({x,y,dx:-g.gx/s,dy:-g.gy/s,s});              // downhill unit direction
+  }
+  return pts;}
+function renderFallLine(){
+  if(!SLOPE_FIELD)SLOPE_FIELD=buildSlopeField();
+  ctx.save();ctx.lineCap='round';
+  for(const p of SLOPE_FIELD){
+    const a=clamp((p.s-0.018)*4,0.12,0.42);               // opacity by steepness
+    const Lw=clamp(p.s*70,3,7);                            // arrow length, yards, by steepness
+    const x0=SX(p.x),y0=SY(p.y),x1=SX(p.x+p.dx*Lw),y1=SY(p.y+p.dy*Lw);
+    ctx.strokeStyle='rgba(206,226,255,'+a+')';ctx.lineWidth=1.4;
+    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);ctx.stroke();
+    const ang=Math.atan2(y1-y0,x1-x0),hl=4;               // arrowhead (points downhill)
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(ang-0.5),y1-hl*Math.sin(ang-0.5));
+    ctx.moveTo(x1,y1);ctx.lineTo(x1-hl*Math.cos(ang+0.5),y1-hl*Math.sin(ang+0.5));ctx.stroke();}
+  ctx.restore();}
+// centerline arc-length helpers (for conventional layup/landing spots)
+function _clCum(){const p=CENTER.map(c=>({x:c[0],y:c[1]})),L=[0];
+  for(let i=1;i<p.length;i++)L.push(L[i-1]+Math.hypot(p[i].x-p[i-1].x,p[i].y-p[i-1].y));return{p,L};}
+function _clTotal(){const{L}=_clCum();return L[L.length-1];}
+function _clPointAt(d){const{p,L}=_clCum(),tot=L[L.length-1];d=Math.max(0,Math.min(d,tot));
+  for(let i=1;i<p.length;i++){if(L[i]>=d){const t=(d-L[i-1])/((L[i]-L[i-1])||1);
+    return{x:p[i-1].x+(p[i].x-p[i-1].x)*t,y:p[i-1].y+(p[i].y-p[i-1].y)*t};}}return p[p.length-1];}
+// conventional elevation marks (yards, signed, relative to current ball). Fixed spots only.
+function conventionalMarks(){
+  const bz=elev(ball.x,ball.y), toPin=Math.hypot(PIN.x-ball.x,PIN.y-ball.y), marks=[];
+  if(lie!=='green') marks.push({x:PIN.x,y:PIN.y,dz:Math.round(elev(PIN.x,PIN.y)-bz)});   // GREEN, always
+  if(toPin>230){                                                  // tee shot / layup → add fixed conventional spots
+    const greenFront=_clTotal()-GREEN.rx, shown=[{x:PIN.x,y:PIN.y}];
+    for(const c of [_clPointAt(265), _clPointAt(greenFront-100)]){ // landing zone, layup-to-100
+      const dToPin=Math.hypot(PIN.x-c.x,PIN.y-c.y);
+      if(dToPin<toPin-50 && dToPin>55 && shown.every(s=>Math.hypot(s.x-c.x,s.y-c.y)>45)){
+        marks.push({x:c.x,y:c.y,dz:Math.round(elev(c.x,c.y)-bz)});shown.push(c);}}}
+  return marks;}
+function renderElevMarks(){
+  for(const m of conventionalMarks()){
+    const x=SX(m.x),y=SY(m.y);
+    const txt=m.dz>0?'+'+m.dz:(m.dz<0?''+m.dz:'±0');
+    const arrow=m.dz>0?'▲':(m.dz<0?'▼':'•');
+    const label=txt+arrow;
+    ctx.font='700 11px JetBrains Mono';const w=ctx.measureText(label).width;
+    const bx=x+9,by=y-20;                                          // offset up-right of the spot
+    ctx.fillStyle='rgba(8,16,11,.85)';ctx.strokeStyle='rgba(217,179,76,.55)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.rect(bx,by,w+10,16);ctx.fill();ctx.stroke();
+    ctx.fillStyle=m.dz>0?'#ffd36b':(m.dz<0?'#9fd0ff':'#d8e0d8');ctx.textAlign='left';
+    ctx.fillText(label,bx+5,by+12);
+    // tiny leader dot at the actual spot
+    ctx.fillStyle='rgba(217,179,76,.7)';ctx.beginPath();ctx.arc(x,y,2,0,7);ctx.fill();}}
 function render(){
   const W=cv.clientWidth,H=cv.clientHeight;ctx.clearRect(0,0,W,H);
   // rough base + vignette
@@ -794,6 +858,7 @@ function render(){
     ctx.fillStyle='rgba(160,135,80,.22)';BUNKER_GRAINS[bi].forEach(([dx,dy])=>{ctx.beginPath();
       ctx.arc(sx+dx*rr,sy+dy*rr,Math.max(1,T.s*0.4),0,7);ctx.fill();});});
   drawGreen(SX,SY,T.s,false);
+  renderFallLine();                       // SLATE HARBOR: sparse downhill arrows (fairway/rough only)
   // tee marker
   ctx.fillStyle='#d9b34c';ctx.fillRect(SX(TEE.x)-9,SY(TEE.y)-3,18,6);
   // yardage rings (only on the wide view)
@@ -824,6 +889,7 @@ function render(){
     ctx.restore();}
   // flag + pin
   drawPin(SX,SY);
+  if(!anim&&!holed)renderElevMarks();      // SLATE HARBOR: conventional elevation marks (yards, from ball)
   // ball
   drawBall(SX,SY,T.s);
   drawWind(W,H);
@@ -1296,8 +1362,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.11.0 — end */
+/* golf-sim 0.12.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.11.0 -->
+<!-- golf-sim 0.12.0 -->
