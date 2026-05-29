@@ -1,4 +1,4 @@
-<!-- golf-sim 0.13.0 -->
+<!-- golf-sim 0.14.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.13.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.14.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.13.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.14.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,7 +193,7 @@
   </div>
 </div>
 <script>
-const VERSION='0.13.0';  /* SemVer (HARBOR LEDGER BATCH — ROLL HONEST: GROUND TRUTH slope-fed rollout [uphill brakes / downhill runs / cross-slope drift], REAL ROLL rollout-magnitude calibration to Tour [ROLLBASE ~halved, low/punch TRAJ.roll tightened], FLYER LIE light-rough flyer [club-loft-gated, +carry & +rollout, more green release], firmness hook [effectiveFirmness const]; TAB TITLE: <title> → "LINKS · Career Golf"): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.14.0';  /* SemVer (TIDE GLASS BATCH — TRUE SPEED: displayed ball speed derived from the shot's speed-relevant carry [post dispersion+mishit, pre flyer/wind/elevation] ÷ full-club carry, so partial shots read lower & speed varies shot-to-shot with no new variance source; BOUNCE SCATTER: situation-weighted rollout variance [everyday jitter × firmness × surface + rare tail kick/dead-stop] in the full-shot rollout. Prev HARBOR LEDGER BATCH — ROLL HONEST [GROUND TRUTH/REAL ROLL/FLYER LIE/firmness hook] + TAB TITLE): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 
 /* ---------- golfer ---------- */
@@ -412,6 +412,7 @@ const TRAJ={high:{apex:1.6,roll:0.45,wind:1.4},mid:{apex:1.0,roll:1.0,wind:1.0},
 // k_elev is a Dr. Priya tunable (contract §7). Distinct from the stance/lie tilt in model().
 const K_ELEV=0.6, ELEVTRAJ={high:1.3,mid:1.0,low:0.7,punch:0.4};
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
+const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
 const SHAPES={draw:-1,straight:0,fade:1};
 // around-green shot types: carry fraction of total, apex, roll factor, club
 const STYPES={flop:{cf:0.9,apex:1.7,roll:0.25,club:'LW'},pitch:{cf:0.72,apex:1.15,roll:0.55,club:'SW'},
@@ -498,6 +499,11 @@ function resolveShot(){
   let carry=m.carry+gauss()*m.dist, latOff=gauss()*m.lat, note='', flyer=false;
   const mishitP=0.015+(1-golfer.consistency/100)*0.08+({rough:0.04,bunker:0.08}[lie]||0)+(currentLie.quality==='divot'?0.08:0);
   if(Math.random()<mishitP){carry*=0.6+Math.random()*0.22;latOff*=1.8;note='Mishit. ';}
+  // TRUE SPEED: the carry attributable to BALL SPEED — captured after dispersion + mishit
+  // (both are speed/strike effects) but BEFORE flyer (a spin effect, not speed), wind, and
+  // elevation (air, not speed). clubSpeed × (_speedCarry ÷ full-club carry) recovers the mph
+  // that actually came off the face this shot, since carry ∝ ball speed in this model.
+  const _speedCarry=carry;
   // FLYER LIE: light rough (ball sitting up) — grass intercepts the strike, kills spin,
   // so the ball flies AND runs farther than expected. Most common 6i–PW (the loft/spin
   // window grass interferes with), rare with long clubs, rare with wedges. Buried lies do
@@ -557,7 +563,15 @@ function resolveShot(){
     const sa=lg.gx*cosA+lg.gy*sinA;            // along-line slope: + uphill, − downhill
     const sc=lg.gx*pX+lg.gy*pY;                // cross-line slope: + uphill-LEFT
     const firmnessMul=0.5+effectiveFirmness;   // 0.5 at firm=0 (soft/wet) … 1.5 at firm=1 (baked)
-    const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr*(1-sa*K_ALONG)*firmnessMul*(flyer?1.25:1);   // flyer 1.25 compounds with the +carry bonus → ~+40% total rollout (handoff target +30–50%)
+    // BOUNCE SCATTER: rollout is the least predictable part of a shot. Everyday jitter scales
+    // with firmness (baked turf bounces unpredictably) and surface (rough grabs at random); a
+    // rare tail event is the unexpected hard kick (firm) or dead stop (soft). Systematic, not
+    // flat RNG — the situation drives how unpredictable the bounce is. Never shown in aim preview.
+    const surfVar={fairway:1,tee:1,fringe:1.3,rough:1.5,bunker:1.6}[landLie]??1.2;
+    let bounceF=1+gauss()*BS_SIGMA*firmnessMul*surfVar;
+    if(Math.random()<BS_TAIL){const fwd=Math.random()<effectiveFirmness;const kick=fwd?1.4+Math.random()*0.5:0.3+Math.random()*0.25;bounceF*=kick;note+=fwd?'Took a big bounce! ':'Sat down quick. ';}   // tail direction firmness-weighted: firmer → more forward kicks, softer → more dead-stops
+    bounceF=Math.max(0.2,bounceF);   // a bounce can't reverse the ball
+    const roll=carry*(ROLLBASE[cid]||.04)*m.rollF*gr*(1-sa*K_ALONG)*firmnessMul*(flyer?1.25:1)*bounceF;   // flyer 1.25 compounds with the +carry bonus → ~+40% total rollout (handoff target +30–50%)
     ex+=cosA*roll; ey+=sinA*roll;
     ex-=pX*roll*sc*K_CROSS; ey-=pY*roll*sc*K_CROSS;   // drift toward downhill
   }
@@ -572,7 +586,7 @@ function resolveShot(){
   shotMeta={
     carry:_carry, roll:_roll, total:_carry+_roll,
     club:club(cid)[1], cid,
-    ballSpeed: _full ? clubSpeed(golfer.ballSpeed,cid) : null,     // exact: the mph that drove carryOf
+    ballSpeed: _full ? clubSpeed(golfer.ballSpeed,cid)*(_speedCarry/Math.max(plan.maxCarry,1)) : null,   // TRUE SPEED: mph that drove THIS shot = clubSpeed × (speed-relevant carry ÷ full-club carry). Varies with effort/dispersion/mishit; flyer & wind/elev excluded.
     offline:_off, full:_full,
     descLabel: _full ? 'Shape · Traj' : 'Type',
     desc: _full
@@ -1380,8 +1394,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.13.0 — end */
+/* golf-sim 0.14.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.13.0 -->
+<!-- golf-sim 0.14.0 -->
