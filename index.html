@@ -1,4 +1,4 @@
-<!-- golf-sim 0.20.0 -->
+<!-- golf-sim 0.21.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.20.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.21.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.20.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.21.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -199,7 +199,20 @@
   </div>
 </div>
 <script>
-const VERSION='0.20.0';  /* SemVer (AMBER LYNX — CADDIE LENS, rules-based read. First player-visible caddie output.
+const VERSION='0.21.0';  /* SemVer (MOSSY KETTLE BATCH = PEWTER OTTER + COBALT WREN.
+   PEWTER OTTER (fix): buildSnapshot now reads the SHOT being hit — attempted carry along the aim line,
+   mirroring resolveShot's plan (plan.ang/plan.intended) — instead of the full geometric distance to the
+   pin. The old code scaled wind/lie terms to a pin distance the ball can't fly (e.g. a 392y tee shot with
+   a 274 driver), inflating them and DRIFTING the caddie's number from the ball's actual behaviour. Restores
+   the PLAYS TRUE invariant on unreachable shots. caddieLensRead now builds estPlays on snap.playsTrue
+   (= attempted-carry base + true terms) so an elite with no lean reads exactly true.
+   COBALT WREN (voice): caddie read rewritten into caddie language. WIND as hurt/help + PERCENTAGE
+   ("a little hurt — costs you about 10%"), LIE as a percentage; both scale with the shot so they're
+   club-agnostic (you may not hit a full shot). ELEVATION is absolute yards by nature, and its phrasing
+   is now PER-CADDIE (voice.elev: 'yards' | 'clubs' | 'pct') — Denny talks yards, Marisol talks clubs —
+   so caddies sound personal and a player finds the one that fits. Dropped the ambiguous "adds N yards
+   to the hole" framing. 'pct' style supported for future caddies; 'alternate' deferred.
+   Prev AMBER LYNX (0.20.0) — CADDIE LENS, rules-based read. First player-visible caddie output.
    Replaced the ORACLE caddieRead() full-shot path (which printed true wind + true break) with a lens-distorted
    ESTIMATE: a caddie reads the snapshot's signed factor terms (windTerm/elevTerm/lieTerm from components{}) through
    its own distorted dials (dial = 1 + dir×leanSize; two-term lean: skillGap×(1−familiarity) + skillGap×(hardness−1))
@@ -520,16 +533,20 @@ const K_ELEV=0.6, ELEVTRAJ={high:1.3,mid:1.0,low:0.7,punch:0.4};
  * the strokes/round spread is NOT calibrated).
  * =================================================================== */
 const CADDIES={
-  // competent: low reads, big lean, biased — chronically under-reads wind/elev, over-reads lie
+  // competent: low reads, big lean, biased — chronically under-reads wind/elev, over-reads lie.
+  // voice: old-school, talks in YARDS.
   competent:{ id:'cad_comp', name:'Denny Rourke', tier:'Competent',
     playingYards:0.60, greenReading:0.58, shortGame:0.62, courseManagement:0.60,
     localKnowledge:0.55, leanStrength:1.0,
-    disposition:{ playingYards:-1, greenReading:-1, shortGame:1, strategy:0 } },
-  // elite: high reads, small lean, near-unbiased (faint over-read on tricky greens only)
+    disposition:{ playingYards:-1, greenReading:-1, shortGame:1, strategy:0 },
+    voice:{ elev:'yards' } },
+  // elite: high reads, small lean, near-unbiased (faint over-read on tricky greens only).
+  // voice: tour-caddie feel, talks in CLUBS ("half a club uphill").
   elite:{ id:'cad_elite', name:'Marisol Vega', tier:'Elite',
     playingYards:0.90, greenReading:0.92, shortGame:0.88, courseManagement:0.90,
     localKnowledge:0.85, leanStrength:0.55,
-    disposition:{ playingYards:0, greenReading:1, shortGame:0, strategy:0 } }
+    disposition:{ playingYards:0, greenReading:1, shortGame:0, strategy:0 },
+    voice:{ elev:'clubs' } }
 };
 let caddieKey='competent';                 // UI selector (default: the more-wrong one, so the spread shows on flip)
 const caddie=()=>CADDIES[caddieKey];
@@ -546,24 +563,29 @@ function dial(skill, dir, hardness, familiarity, leanStrength){
   return Math.max(0, 1 + dir*leanSize);
 }
 // rules-based read half of a CaddyTurn. Consumes the SNAPSHOT only.
-// Returns the caddie's ESTIMATED playing yardage (never playsTrue) + per-term estimates + confidence.
+// Returns the caddie's ESTIMATED playing yardage (never playsTrue) + per-term estimates,
+// + percentages (wind/lie scale with the shot → club-agnostic; elevation is absolute yards).
 function caddieLensRead(snap, cad){
   const c=snap.components;                                  // signed, +=plays LONGER (REAL terms)
+  const base=snap.playsTrue-(c.windTerm+c.elevTerm+c.lieTerm);  // PEWTER OTTER: attempted-carry base
   const courseFam=(snap.courseFamiliarity!=null?snap.courseFamiliarity:PROVISIONAL_FAMILIARITY);
   const fam=cad.localKnowledge*courseFam;                   // §5: familiarity = localKnowledge × courseFamiliarity
   const dPY=cad.disposition.playingYards, dSG=cad.disposition.shortGame;
-  // playingYards reads BOTH wind & elevation (one skill, separate hardness — caddie-lens §4)
   const windDial=dial(cad.playingYards, dPY, windHardness(snap), fam, cad.leanStrength);
   const elevDial=dial(cad.playingYards, dPY, 1,                 fam, cad.leanStrength); // elevation steady
   const lieDial =dial(cad.shortGame,    dSG, lieHardness(snap),  fam, cad.leanStrength);
   const estWind=c.windTerm*windDial, estElev=c.elevTerm*elevDial, estLie=c.lieTerm*lieDial;
-  const estPlays=snap.distanceGeom+estWind+estElev+estLie;
+  // build on playsTrue so the read shares the engine's base — elite w/ no lean reads true (PLAYS TRUE).
+  const estPlays=snap.playsTrue+(estWind-c.windTerm)+(estElev-c.elevTerm)+(estLie-c.lieTerm);
+  const safeBase=Math.max(1,base);                          // percentages of the shot (+ = plays longer = HURT)
+  const windPct=estWind/safeBase*100, liePct=estLie/safeBase*100, elevPct=estElev/safeBase*100;
   // confidence: difficulty × (1−skill) on the read axes (provisional, uncalibrated).
   const d=snap.difficulty, gPY=1-cad.playingYards, gSG=1-cad.shortGame;
   const conf=clamp(1-((d.wind||0)*gPY+(d.elevation||0)*gPY+(d.lie||0)*gSG), 0.2, 0.99);
   // generic club pick (NO rapport/golfer-fit — closest baseCarry to the estimate).
   let rec=snap.bag[0]; for(const b of snap.bag){ if(Math.abs(b.baseCarry-estPlays)<Math.abs(rec.baseCarry-estPlays))rec=b; }
-  return { estPlays, estWind, estElev, estLie, confidence:conf, recClub:rec.club, recCarry:rec.baseCarry };
+  return { estPlays, base, estWind, estElev, estLie, windPct, liePct, elevPct,
+           confidence:conf, recClub:rec.club, recCarry:rec.baseCarry };
 }
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
@@ -1500,22 +1522,35 @@ function caddieRead(){
     s+=`<br><span style="color:var(--muted);font-size:11px">Pace targets (past the hole): ${leaves}</span>`;
     return s;
   }
-  // AMBER LYNX: lens-distorted ESTIMATE (caddie-lens-0.1.0). Snapshot-only; never reads
-  // WIND/grid globals or playsTrue. The player sees the caddie's number, not the truth.
+  // AMBER LYNX + COBALT WREN: lens-distorted ESTIMATE in caddie voice. Snapshot-only; never reads
+  // WIND/grid globals or playsTrue. Wind = hurt/help + %; lie = %; elevation = PER-CADDIE unit.
   const snap=buildSnapshot(), cad=caddie(), r=caddieLensRead(snap,cad);
-  const est=Math.round(r.estPlays), geom=Math.round(snap.distanceGeom), d=est-geom;
-  const deltaTxt = Math.abs(d)<2 ? 'right around the number'
-                 : (d>0?`about ${d} longer than the stick`:`about ${-d} shorter than the stick`);
-  // dominant factor(s) in the CADDIE'S OWN read (its estimates, not truth) — qualitative only
-  const facs=[['the wind',r.estWind],['the elevation',r.estElev],['the lie',r.estLie]]
-    .filter(f=>Math.abs(f[1])>=1.5).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
-  const why = facs.length? ' — '+facs.slice(0,2).map(f=>`${f[0]} ${f[1]>0?'adds':'takes off'} ~${Math.abs(Math.round(f[1]))}`).join(', ') : '';
-  const confPct=Math.round(r.confidence*100);
-  const confTag = r.confidence<0.55 ? `<span style="color:#c98b5a">low confidence (${confPct}%) — tricky read</span>` : `confidence ${confPct}%`;
+  const est=Math.round(r.estPlays);
+  const clauses=[];
+  // WIND — hurt/help + percentage (+ = plays longer = HURT / into it; − = HELP / downwind).
+  const wp=Math.abs(r.windPct);
+  if(wp>=2){ const mag=wp<6?'a little':wp<12?'some':'a good chunk of';
+    clauses.push(r.windPct>0 ? `${mag} hurt — costs you about ${Math.round(wp)}%`
+                             : `${mag} help — knock about ${Math.round(wp)}% off`); }
+  // LIE / stance tilt — percentage (also scales with the shot).
+  const lp=Math.abs(r.liePct);
+  if(lp>=2){ clauses.push(r.liePct>0?`the slope adds about ${Math.round(lp)}%`:`the slope gives back about ${Math.round(lp)}%`); }
+  // ELEVATION — PER-CADDIE phrasing (yards / clubs / %): caddies sound different, you find your fit.
+  const ev=(cad.voice&&cad.voice.elev)||'yards', eAbs=Math.abs(r.estElev), up=r.estElev>0;
+  if(eAbs>=2){
+    if(ev==='clubs'){ const cl=eAbs/10, q=cl<0.4?'a touch':cl<0.85?'about a half-club':cl<1.4?'a full club':`${cl.toFixed(1)} clubs`;
+      clauses.push(`playing ${q} ${up?'uphill':'downhill'}`); }
+    else if(ev==='pct'){ clauses.push(`${up?'uphill':'downhill'}, about ${Math.round(Math.abs(r.elevPct))}%`); }
+    else { clauses.push(`${up?'uphill':'downhill'}, ~${Math.round(eAbs)} ${up?'longer':'shorter'}`); }
+  }
   const first=cad.name.split(' ')[0], lbl=(club(r.recClub)||[,r.recClub])[1];
+  let body=clauses.length?clauses.join(', ')+'. ':'';
+  if(body)body=body.charAt(0).toUpperCase()+body.slice(1);     // sentence-case the quote
+  const confPct=Math.round(r.confidence*100);
+  const confTag = r.confidence<0.55 ? `<span style="color:#c98b5a">not fully sure (${confPct}%) — tricky read</span>` : `confidence ${confPct}%`;
   let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
-  s+=`<b style="color:#7bc26a">Plays ~${est}y</b> <span style="color:var(--muted)">(${deltaTxt})</span>`;
-  s+=`<br><span style="color:var(--muted)">${first}: “I’d go ${lbl}${why}.”</span>`;
+  s+=`<b style="color:#7bc26a">Plays ~${est}y</b>`;
+  s+=`<br><span style="color:var(--muted)">${first}: “${body}I’d go ${lbl}.”</span>`;
   s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
   return s;
 }
@@ -1675,7 +1710,14 @@ function buildSnapshot(){
   const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
   const distGeom=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
   let cid=(document.getElementById('club')||{}).value||'7i'; if(cid==='P')cid='7i';
-  const pt=(lie==='green')?null:playingTerms(angPin,distGeom,traj,cid);   // no aerial terms on the green
+  // PEWTER OTTER: read the SHOT being hit (attempted carry along the aim line), mirroring
+  // resolveShot's plan — NOT the full geometric distance to a pin you can't fly to. This keeps
+  // the caddie's number aligned with what the ball will actually do (the PLAYS TRUE invariant).
+  const plan=(typeof shotPlan==='function')?shotPlan():null;
+  let ptAng=angPin, ptInt=distGeom, ptCid=cid;
+  if(plan && !plan.isPutt){ ptAng=plan.ang; ptInt=plan.intended; ptCid=plan.cid; }
+  else if(lie!=='green'){ ptInt=Math.min(distGeom, carryOf(cid)); }   // no target set: cap to club carry
+  const pt=(lie==='green')?null:playingTerms(ptAng,ptInt,traj,ptCid);   // no aerial terms on the green
   const gread=snapGreenRead();
   return {
     ball:{pos:{x:ball.x,y:ball.y}, lie, lieQuality:currentLie.quality},
@@ -1720,8 +1762,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.20.0 — end */
+/* golf-sim 0.21.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.20.0 -->
+<!-- golf-sim 0.21.0 -->
