@@ -1,4 +1,4 @@
-<!-- golf-sim 0.22.0 -->
+<!-- golf-sim 0.23.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.22.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.23.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -153,7 +153,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.22.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.23.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -200,7 +200,17 @@
   </div>
 </div>
 <script>
-const VERSION='0.22.0';  /* SemVer.
+const VERSION='0.23.0';  /* SemVer.
+   HICKORY COMET (0.23.0, minor — content): appended four authored holes after The Bend —
+   Paramount CC 15/16/17/18 (current routing 6-9; old map numbers kept to match the BlueGolf
+   flyovers). Faithful plan geometry (centerline/dogleg/bunkers/green/tees), real elevation &
+   fairway camber in elevFn, dominant-lean greenFn (turtleback/back-to-front, right-to-left),
+   #16 pond as water; each hole stores its full description verbatim in `notes` (LLM-caddie
+   grounding). CEILINGS (honest): green shape is still an ellipse + simple slope primitive, so
+   greenFn captures dominant character only (not the pocket-by-pocket contour maps); OOB is not a
+   modeled lie type, so OOB sides are dense trees + rough (no penalty); elevation/camber magnitudes
+   are real inputs but the playing-yard conversion (k_elev) is still the uncalibrated placeholder.
+   Small rider: gotoHole now refreshes the on-screen titleplate to the active hole.
    LANTERN MAGPIE (0.22.0, minor — multi-hole plumbing): holes are now an ARRAY (HOLES) with an
    activeHoleIdx + a "Next hole →" control. The renderer, buildSnapshot, resolveShot, green view,
    yardage book, etc. all read the ACTIVE hole via let-bound derived globals (HOLE/GREEN/PINS/TEE/
@@ -340,7 +350,7 @@ const setPath=(o,p,v)=>{const ks=p.split('.'),last=ks.pop();ks.reduce((a,k)=>a[k
    elevation field (elevFn) and the green surface (greenFn). Authoring a new hole = pushing
    another object of this shape into HOLES — data on top, no engine change. (SPINE SWAP lineage retained.) */
 const HOLE_BEND={
-  id:'hole_bend', number:1, name:'The Bend', preferredSide:-1,
+  id:'hole_bend', number:1, name:'The Bend', preferredSide:-1, oobBox:{minx:-40,maxx:62,miny:-16,maxy:426}, // GRANITE FERRET: exact original box
   tees:[{x:4,y:3,name:'Member',par:4,yardage:410}],
   centerline:[[4,0,20],[3,90,20],[5,160,19],[13,214,17],[24,256,16],[30,312,18],[28,362,20],[27,392,22]]
     .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
@@ -372,7 +382,112 @@ const HOLE_BEND={
     z+=GREEN_FF*Math.exp(-(((x-37)**2)/120+((y-390)**2)/40));  // gentle false front short-right (near front-right pin)
     return z;}
 };
-const HOLES=[HOLE_BEND];                         // LANTERN MAGPIE: the hole array (one authored hole for now)
+const HOLE_15={
+  id:'hole_15', number:15, name:'Paramount 15 (current 6) \u00b7 Par 4', preferredSide:1, oobBox:{minx:-45,maxx:58,miny:-16,maxy:445},
+  tees:[{x:0,y:5,name:'Black',par:4,yardage:406}],
+  centerline:[[0,5,17],[1,110,17],[3,200,16],[7,270,16],[12,350,15],[16,405,15]]
+    .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
+  pins:[{x:13,y:398,name:'Front',tier:0,difficulty:0.45,guardedBy:[]},
+        {x:16,y:405,name:'Middle',tier:0,difficulty:0.5,guardedBy:[]},
+        {x:18,y:413,name:'Back-right (tucked)',tier:1,difficulty:0.75,guardedBy:['bunker']}],
+  green:{cx:16,cy:405,rx:9,ry:16,stimp:12,slope:{ang:Math.atan2(-9,-4),pct:0.045}},
+  hazards:[
+    {type:'bunker',x:-12,y:197,r:7},
+    {type:'bunker',x:31,y:406,r:14},
+    {type:'bunker',x:-14,y:242,r:8}
+  ],
+  trees:[[34,120],[36,180],[35,240],[34,300],[33,360],[36,400],[-20,40],[-22,110],[-23,180],[-24,250],[-25,320]],
+  obst:null,
+  elevFn(x,y){let e=12-0.029*y;
+    e+=2.0*Math.exp(-(((y-378)**2)/260));
+    return e;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;
+    let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));
+    z+=0.40*Math.exp(-(((x-G.cx)**2)/30+((y-G.cy)**2)/130));
+    return z;},
+  notes:`Big downhill tee shot (35 feet downhill, even more at the approach) with trees lining almost the entire way to the green on the right side. if you go far enough right you'll be on the 5th hole, which is better than being behind a tree. left is not good, as there is OOB just 15-20 yards left of the tee box. too far left off tee is OOB for sure. ALso fairway bunkers from 190-200 and 230-250 on the left side and its downhill so you dont even have to hit it that far. If you're 10-30 yards off the fairway to the right you're blocked off by trees and have to hit a recovery shot out to the fairway. 45 yards right with a good drive and you may have a shot at the green. Approach is downhill and then back uphill if you're short. If you carry the left bunker and stay out of the woods, you're surprisingly ok, but that's risky. I've been there a lot. approach shot is probably 10-12 feet downhill to a back to front and right to left hard green. this is a true turtle back green. There's a huge bunker to the right and if you catch the right edge of the green it will funnel into the bunker. The bunker from front to back is larger than the green itself, but not particularly deep as some of the other ones. still tough though. cannot go right of that bunker, its too thick and will be a tough time getting it onto the green. long right is fescue. long is fescue. long left has a little bit of room. left pin high probably 15 yards until the cart path and 20 yards to the woods. my best all time shots have come from a 130-ish yard approach shot to this green. it holds high arching 9 irons. Green ~32yd deep, pear-shaped (narrow back, wide middle/front). Detailed contour: central basin with higher perimeter slopes; raised back ridge (26-32yd) falling 6-8% toward the middle; broad low middle (12-25yd) collecting inward; localized depressions left-center (14-20yd) and right-center (12-18yd); steep front perimeter (3-12yd, 6-9%) and side bands (10-22yd, 6-9%) all feeding the central basin then toward the front edge.`
+};
+const HOLE_16={
+  id:'hole_16', number:16, name:'Paramount 16 (current 7) \u00b7 Par 4', preferredSide:1, oobBox:{minx:-48,maxx:50,miny:-16,maxy:490},
+  tees:[{x:0,y:5,name:'Black',par:4,yardage:455}],
+  centerline:[[0,5,18],[0,130,17],[-3,230,16],[-6,320,16],[-9,400,15],[-11,452,15]]
+    .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
+  pins:[{x:-14,y:445,name:'Front-left',tier:0,difficulty:0.55,guardedBy:['bunker']},
+        {x:-9,y:452,name:'Middle',tier:0,difficulty:0.5,guardedBy:[]},
+        {x:-6,y:459,name:'Back-right',tier:1,difficulty:0.7,guardedBy:[]}],
+  green:{cx:-11,cy:452,rx:11,ry:15,stimp:13,slope:{ang:Math.atan2(-11,-7),pct:0.055}},
+  hazards:[
+    {type:'bunker',x:13,y:160,r:5},
+    {type:'bunker',x:-24,y:450,r:10},
+    {type:'bunker',x:14,y:188,r:5},
+    {type:'bunker',x:15,y:214,r:5},
+    {type:'bunker',x:2,y:432,r:5},
+    {type:'water',polygon:[[6,448],[14,446],[22,450],[24,460],[20,470],[10,470],[5,462]]}
+  ],
+  trees:[[26,250],[28,262],[27,276],[29,290],[-26,240],[-28,300],[-29,360],[-27,410]],
+  obst:null,
+  elevFn(x,y){let e=0.5+0.016*y;
+    e+=-3.0*Math.exp(-(((y-408)**2)/700));
+    e+= 4.5*Math.exp(-(((y-446)**2)/240));
+    e+= 0.06*x;
+    return e;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;
+    let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));
+    z+=-0.30*Math.exp(-(((x-(G.cx+4))**2)/40+((y-(G.cy-7))**2)/60));
+    return z;},
+  notes:`#1 handicap on the scorecard. its long. fairway cambers hard right to left. Those same circle bunkers from 1st hole will catch any tee shot that veers right from 150-220, plus its about 15 feet uphill from tee box. From 235-290 on the right edge of the fairway are trees that will block your approach, which is already a long one. at about 230 left edge of the fairway you get about 15-18 yards of heavy rough until you are OOB left. These woods carry until about 50 yards from the green. too far left is dead and a penalty. My approach after a good tee shot is 160-170. on a bad is 200+. The approach from 160 is about 9 feet uphill on the left side of the fairway and maybe 3 feet uphill from the right side of the fairway, but visually it is terrifying because it goes down and then about 12-15 uphill on the immediate approach to the green. short and it will roll back down, although not as treacherous as the 3rd hole approach. there is a small bunker short right and a large bunker left of the green that will catch anything short to the middle of the green on the left. It's very deep. right bunker is ok depending on pin position but usually ok. To the right of the right bunker is a pond, which sits about 15 yards downhill from the edge of the green. Any approach shot that is pin high or long that is fading hard will filter into this pond area. There is a lot of room long, but that leaves you probably the hardest chip on the course to a massive downhill slope on a back to front green (right to left). On a strackaline book, almost this entire green is pink. Putting downhill on this is almost impossible to keep it on the green. I've putted off the green and down the approach into the fairway a few times. You want to stay below the hole if possible, but as stated the green runs so fast back to front its hard to make it stay short. Green ~30yd deep, rounded, widest middle. Dominant slope back-to-front with a consistent right-to-left tilt -> diagonal fall toward front-left across most of the surface; localized recessed pocket front-right (6-12yd).`
+};
+const HOLE_17={
+  id:'hole_17', number:17, name:'Paramount 17 (current 8) \u00b7 Par 5', preferredSide:0, oobBox:{minx:-50,maxx:52,miny:-16,maxy:525},
+  tees:[{x:0,y:5,name:'Black',par:5,yardage:490}],
+  centerline:[[0,5,18],[0,130,17],[-3,250,16],[-5,300,16],[-8,400,15],[-11,485,15]]
+    .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
+  pins:[{x:-14,y:478,name:'Front-left',tier:0,difficulty:0.6,guardedBy:['bunker']},
+        {x:-10,y:485,name:'Middle',tier:0,difficulty:0.5,guardedBy:[]},
+        {x:-6,y:494,name:'Back-right',tier:1,difficulty:0.7,guardedBy:[]}],
+  green:{cx:-11,cy:485,rx:11,ry:17,stimp:12,slope:{ang:Math.atan2(-7,-11),pct:0.05}},
+  hazards:[
+    {type:'bunker',x:8,y:360,r:7},
+    {type:'bunker',x:-25,y:485,r:12},
+    {type:'bunker',x:3,y:466,r:5}
+  ],
+  trees:[[24,140],[26,180],[25,220],[27,255],[-24,215],[-26,245],[-25,270]],
+  obst:null,
+  elevFn(x,y){let e=0.5+0.018*y;
+    e+=3.6*Math.exp(-(((y-248)**2)/3000));
+    e+=-2.6*Math.exp(-(((y-286)**2)/700));
+    e+=(y>270?0.075:0.045)*x;
+    return e;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;
+    let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));
+    z+=-0.28*Math.exp(-(((x-(G.cx-3))**2)/45+((y-(G.cy-6))**2)/70));
+    return z;},
+  notes:`Our first par 5. Tee shot goes 25 feet uphill to the landing zone, which then at about 250 yards goes 10 feet downhill for the next 20 yards. the fairway up to this downhill cambers right to left and then starts to camber even more dramatically right to left after the hill. From about 210-270 yards left off the tee, you get 20 yards of room before you go OOB left. There's no OOB right, but a line of trees off the right side of the fairway from 130-260 will block any chance of an approach to the green. If you're lucky enough to hit a 260 yard drive in the middle of the fairway and make it down that little hill, you have a choice. 220 to a nasty sidespinning green or layup. There's a bunker at 165 (measuring from the bottom of the hill) on the right side of the fairway that seems to catch all the layups. Bunker short right of the green and then a large bunker on the left that spans the entire depth of the green. Right bunker is usually ok to be in, left bunker not great unless the pin is back right. Green is another nasty one, going hard right to left and back to front, but mostly right to left. pin positions are usually front left or back right. not much room to be long. Long left is very bad. there is plenty of room left of the left bunker, but it is way downhill of the green and heavy rough makes it hard to carry the left bunker coming back up. 15 yards long and right of the green puts you in fescue and a drop. Green ~34yd deep, broad oval. Dominant back-to-front with clear right-to-left lean -> diagonal fall toward front-left; localized inward-draining pockets left-center (15-22yd) and back-left (30-32yd).`
+};
+const HOLE_18={
+  id:'hole_18', number:18, name:'Paramount 18 (current 9) \u00b7 Par 3', preferredSide:-1, oobBox:{minx:-40,maxx:40,miny:-16,maxy:235},
+  tees:[{x:0,y:5,name:'Black',par:3,yardage:167}],
+  centerline:[[0,5,15],[0,95,14],[0,185,13]]
+    .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
+  pins:[{x:-2,y:178,name:'Front',tier:0,difficulty:0.5,guardedBy:['bunker']},
+        {x:0,y:188,name:'Middle',tier:0,difficulty:0.5,guardedBy:[]},
+        {x:2,y:198,name:'Back',tier:1,difficulty:0.65,guardedBy:[]}],
+  green:{cx:0,cy:188,rx:10,ry:17,stimp:13,slope:{ang:Math.atan2(-10,0),pct:0.04}},
+  hazards:[
+    {type:'bunker',x:4,y:168,r:9},
+    {type:'bunker',x:0,y:208,r:7},
+    {type:'bunker',x:-12,y:182,r:5}
+  ],
+  trees:[[16,150],[18,190],[17,40],[-16,150],[-18,90],[-17,210]],
+  obst:null,
+  elevFn(x,y){return 0.5+0.040*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;
+    let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));
+    z+=0.012*(x-G.cx)*((y-G.cy)/G.ry);
+    return z;},
+  notes:`Tillinghast's reef concept, its an uphill par 3 with a bunker that catches everything short straight or short right. short left is ok but long left not. long straight gets you possibly in a bunker in back of green. It usually plays about 190 so its a long uphill par 3. Theres about 15 yards until danger left, right and long, but long left is probably the bad miss. Green goes back to front. front goes left to right and back goes right to left. surprisingly fast green. Green ~35yd deep, irregular oval. Dominant back-to-front; localized inward-draining pockets back-left (30-33yd) and left-center (15-25yd); right side (18-30yd) steeper feeding forward; front (3-15yd) strengthening toward the front edge.`
+};
+const HOLES=[HOLE_BEND, HOLE_15, HOLE_16, HOLE_17, HOLE_18];   // HICKORY COMET: The Bend (control) + Paramount 15-18 (current 6-9)
 let activeHoleIdx=0;
 let HOLE=HOLES[activeHoleIdx];                    // ACTIVE hole — everything below reads this
 const COURSE={id:'course_bend',name:'The Bend GC',designerArchetype:'strategic',holes:HOLES};
@@ -383,6 +498,7 @@ let CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
 let GREEN=HOLE.green;                            // renderer reads cx,cy,rx,ry (extra fields harmless)
 let PINS=HOLE.pins;
 let pinIdx=0, PIN={...PINS[0]};
+let OOB_BOX=HOLE.oobBox;                          // GRANITE FERRET: per-hole out-of-bounds box (was hardcoded in lieAt)
 // TRUE BREAK / BOLD GREEN: the green is a SLOPE GRID, not one constant. greenZ(x,y) is the hidden
 // surface height (yd). green.slope is the BASE-TILT SEED (reproduces the old uniform fall); the two
 // tier terms layer a two-tier character on top. ALL tier terms = 0 ⇒ pure base tilt (the feel gate).
@@ -448,7 +564,7 @@ function pip(pt,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i+
 const inCirc=(x,y,c)=>Math.hypot(x-c.x,y-c.y)<=c.r;
 const inEll=(x,y,e)=>((x-e.cx)**2)/(e.rx**2)+((y-e.cy)**2)/(e.ry**2)<=1;
 buildGreenGrid();   // TRUE BREAK: generate the green slope grid now that inEll exists
-function lieAt(x,y){if(x<-40||x>62||y<-16||y>426)return'ob';
+function lieAt(x,y){if(x<OOB_BOX.minx||x>OOB_BOX.maxx||y<OOB_BOX.miny||y>OOB_BOX.maxy)return'ob';
   if(pip([x,y],WATER))return'water';
   if(inEll(x,y,GREEN))return'green';
   if(inEll(x,y,{cx:GREEN.cx,cy:GREEN.cy,rx:GREEN.rx+3,ry:GREEN.ry+3}))return'fringe';
@@ -1689,6 +1805,7 @@ function loadHole(idx){
   FAIRWAY=buildCorridor(); BUNKER_GRAINS=buildBunkerGrains(); RIPPLES=buildRipples();
   buildGreenGrid(); CONDITIONS.stimp=GREEN.stimp;
   pinIdx=0; PIN={...PINS[0]};
+  OOB_BOX=HOLE.oobBox;
 }
 /* gotoHole: loadHole + reset the round-ish UI state and repaint (the DOM half). */
 function gotoHole(idx){
@@ -1698,6 +1815,10 @@ function gotoHole(idx){
   ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
   rollWind();captureLie(TEE.x,TEE.y);resetControls();
   document.getElementById('log').innerHTML='';document.getElementById('club').value='D';
+  // HICKORY COMET: refresh the on-screen titleplate to the active hole
+  {const t=HOLE.tees[0]||{}, ht=document.getElementById('holetitle'), hs=document.getElementById('holesub');
+   if(ht)ht.textContent='Hole '+HOLE.number+' · Par '+(t.par||'');
+   if(hs)hs.textContent=(HOLE.name||HOLE.id)+(t.yardage?' · '+t.yardage+' yds':'');}
   fit();fitLie();fitGreen();sync();render();drawGreenView();setView(false);
   flash('Hole '+HOLE.number+' · '+(HOLE.name||HOLE.id)+'. Wind: '+WIND.mph+' mph'+(HOLES.length<2?' — only hole authored, wraps to itself.':'.'));
 }
@@ -1815,8 +1936,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.22.0 — end */
+/* golf-sim 0.23.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.22.0 -->
+<!-- golf-sim 0.23.0 -->
