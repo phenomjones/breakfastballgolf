@@ -1,4 +1,4 @@
-<!-- golf-sim 0.18.0 -->
+<!-- golf-sim 0.18.1 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.18.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.18.1</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.18.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.18.1</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -195,7 +195,15 @@
   </div>
 </div>
 <script>
-const VERSION='0.18.0';  /* SemVer (CLEAR VISTA BATCH — three render-only visibility upgrades. GREEN PANEL: moved the green close-up off the course canvas (it overlapped the hole + collided with the titleplate) into its own dock card via ctx-swap (const ctx-&gt;let ctx). TEE RANGE: real tee box (mown pad + two markers) replacing the gold stripe; yardage arcs now adaptive, reaching ~400y on the tee and capping near distance-to-pin. RELIEF SHADE: precomputed hole-wide hillshade (RELIEF_FIELD, like SLOPE_FIELD) drawn as a translucent overlay over turf so swale/false-front/mounds/elevated-green read as 3D relief. Prev TREE CUT — removed the strategic in-play tree at (21,312): it was drawn then painted over by the fairway fill (invisible but still colliding). Hazard entry + render block deleted; OBST=null and treeBlock/preview guard on it. Prev GREEN GLASS — wired in the pre-built-but-never-called drawGreenInset: a green close-up panel (top-right) shown on tee/approach/chip so the green is readable when it's a postage stamp in the full view; carries the height tint + net-fall arrow + pin + ball + aim cone + ft-to-pin. Hidden during putts (main view already deep-zooms). Prev GREEN RELIEF BATCH — BOLD GREEN + GREEN READ): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.18.1';  /* SemVer (SNAPSHOT BATCH — two changes, dev/infra only, no player-facing change.
+   PLAYS TRUE: extracted the elev/wind/lie playing-yardage term math out of resolveShot into ONE pure
+   pre-shot function playingTerms() consumed by BOTH the resolution engine and the snapshot — so the
+   caddy's number can never drift from what the ball actually does. Behavior-preserving refactor
+   (identical formulas; harness-verified equal to the old inline math). SNAPSHOT SPINE: read-only
+   buildSnapshot() (mirrors entities.ts SituationSnapshot) + a dev dump (Shift+S → console, window.dumpSnapshot()).
+   Mutates nothing. THREE flagged stubs: golfer-block (legacy 0–100; real metrics at REAL-METRICS migration),
+   hazard severity/recovery (Royce rubric pending), and the difficulty{} block (PROVISIONAL/uncalibrated — Dr. Priya).
+   Spec: caddie-lens-0.1.0.md. Prev CLEAR VISTA (render-only visibility upgrades).): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'); let ctx=cv.getContext('2d');   // let: drawGreenView retargets ctx to the dock canvas, then restores
 
 /* ---------- golfer ---------- */
@@ -478,6 +486,24 @@ function shotPlan(){
   const intended=Math.min(tgtDist,maxCarry);
   return{isPutt:false,finesse,aroundGreen,ang,tgtDist,intended,maxCarry,club:c,cid,sMul,sDisp,capped:tgtDist>maxCarry+1};
 }
+// PLAYS TRUE: the elev/wind/lie playing-yardage terms, extracted to ONE pure pre-shot
+// function consumed by BOTH resolveShot (below) AND buildSnapshot — so the caddy's number
+// and the ball's actual behaviour read the SAME math (no second "caddie physics" to drift).
+// Pure: reads live WIND / ball / currentLie / elev but MUTATES nothing. Sign convention:
+// each term is "+ = plays LONGER". playsTrue = geom + elevTerm + windTerm + lieTerm (hidden truth).
+function playingTerms(ang, intended, trajName, cid){
+  const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
+  const along=wu.x*Math.cos(ang)+wu.y*Math.sin(ang);
+  const cross=wu.x*Math.cos(ang+Math.PI/2)+wu.y*Math.sin(ang+Math.PI/2);
+  const windYds=WIND.mph*0.9*(intended/170)*(WINDEXP[cid]||1)*(TRAJ[trajName]?TRAJ[trajName].wind:1);
+  const tx=ball.x+Math.cos(ang)*intended, ty=ball.y+Math.sin(ang)*intended;
+  const elevDelta=elev(tx,ty)-elev(ball.x,ball.y);                  // + = target higher (yards)
+  const elevTerm=elevDelta*K_ELEV*(ELEVTRAJ[trajName]||1);          // uphill plays longer
+  const lieTerm=intended*lieRel(ang).along*1.1;                     // stance/lie tilt
+  const windTerm=-along*windYds;                                    // tailwind (+along) plays shorter
+  return {geom:intended, along, cross, windYds, elevDelta, elevTerm, lieTerm, windTerm,
+          playsTrue:intended+elevTerm+windTerm+lieTerm};
+}
 // deterministic shot model — drives BOTH the preview and the resolved shot
 function model(plan){
   const cid=plan.cid, rel=lieRel(plan.ang), t=TRAJ[traj];
@@ -543,19 +569,15 @@ function resolveShot(){
   if(currentLie.quality==='fluffy'&&Math.random()<flyP){carry*=1.08+Math.random()*0.12;flyer=true;note+='Flyer! ';}
   if(currentLie.quality==='buried')carry*=0.7;
   carry=Math.max(carry,3);
-  // wind drift
-  const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
-  const along=wu.x*Math.cos(plan.ang)+wu.y*Math.sin(plan.ang);
-  const cross=wu.x*Math.cos(plan.ang+Math.PI/2)+wu.y*Math.sin(plan.ang+Math.PI/2);
-  const windYds=WIND.mph*0.9*(plan.intended/170)*(WINDEXP[cid]||1)*TRAJ[traj].wind;   // GALE FORCE: 0.5 → 0.9 (paired with windF)
+  // wind drift — PLAYS TRUE: along/cross/windYds now come from the shared pre-shot fn (same math)
+  const PT=playingTerms(plan.ang, plan.intended, traj, cid);
+  const along=PT.along, cross=PT.cross, windYds=PT.windYds;   // GALE FORCE 0.9 lives in playingTerms now
   carry+=along*windYds; latOff+=cross*windYds;
   // PHANTOM SLOPE: target-elevation delta plays the shot longer (uphill) / shorter (downhill).
-  // Distinct from the stance/lie tilt already folded into model() via rel.along. The intended
-  // landing point is where the player is hitting TO. Hidden — surfaced only via the ball's
-  // actual carry (it lands shorter uphill) and, later, the caddy; never printed as a number.
-  const _tx=ball.x+Math.cos(plan.ang)*plan.intended, _ty=ball.y+Math.sin(plan.ang)*plan.intended;
-  const elevDelta=elev(_tx,_ty)-elev(ball.x,ball.y);                      // + = target higher (yards)
-  const elevTerm=elevDelta*K_ELEV*(ELEVTRAJ[traj]||1);                    // yards of carry effect
+  // Distinct from the stance/lie tilt already folded into model() via rel.along. PLAYS TRUE: the
+  // elev term now comes from the shared playingTerms() (same elevDelta×K_ELEV×ELEVTRAJ math).
+  // Hidden — surfaced only via the ball's actual carry and, later, the caddy; never printed.
+  const elevTerm=PT.elevTerm;
   carry-=elevTerm; carry=Math.max(carry,3);                              // uphill (positive) → comes up shorter
   const cosA=Math.cos(plan.ang),sinA=Math.sin(plan.ang),pX=Math.cos(plan.ang+Math.PI/2),pY=Math.sin(plan.ang+Math.PI/2);
   let ex=ball.x+cosA*carry+pX*latOff, ey=ball.y+sinA*carry+pY*latOff;
@@ -626,11 +648,10 @@ function resolveShot(){
       : (shotType[0].toUpperCase()+shotType.slice(1))
   };
   // PHANTOM SLOPE: HIDDEN per-shot plays-like decomposition (toward the target), for dev
-  // calibration + the future snapshot generator. NOT rendered anywhere — the player never
-  // sees these (no-oracle DNA). "term" sign convention: + = plays LONGER.
-  const _windTerm=-along*windYds, _lieTerm=plan.intended*lieRel(plan.ang).along*1.1;
-  shotMeta._components={geom:plan.intended, elevTerm, windTerm:_windTerm, lieTerm:_lieTerm};
-  shotMeta._playsTrue=plan.intended+elevTerm+_windTerm+_lieTerm;
+  // calibration + the snapshot generator. NOT rendered anywhere (no-oracle DNA). PLAYS TRUE:
+  // sourced from the same playingTerms() the physics above used — one truth, computed once.
+  shotMeta._components={geom:PT.geom, elevTerm:PT.elevTerm, windTerm:PT.windTerm, lieTerm:PT.lieTerm};
+  shotMeta._playsTrue=PT.playsTrue;
   settle(land,{x:ex,y:ey},note);
 }
 // returns {x,y} where a too-low shot is stopped by the tree, or null
@@ -1452,6 +1473,101 @@ document.getElementById('pin').addEventListener('change',e=>{pinIdx=+e.target.va
   flash('Pin moved: '+PINS[pinIdx].name+'.');});
 window.addEventListener("resize",()=>{fit();fitLie();fitGreen();render();drawLie();drawGreenView();});
 
+/* ===================================================================
+ * SNAPSHOT SPINE (0.18.1) — read-only Situation Snapshot generator.
+ * Mirrors entities.ts `SituationSnapshot`; spec: caddie-lens-0.1.0.md.
+ * Reads live engine state, MUTATES NOTHING. This is the hidden ground truth
+ * the caddy will later DISTORT into an estimate (input-misread, never shown raw).
+ * THREE STUBBED REGIONS (also listed in the returned `_stub`):
+ *   1. golfer{} — legacy 0–100 + real ballSpeed; real metrics at REAL-METRICS migration.
+ *   2. hazardsAhead[].severity / recoveryDifficulty — Royce rubric pending.
+ *   3. difficulty{} — PROVISIONAL, uncalibrated placeholder shapes (Dr. Priya fits later).
+ * =================================================================== */
+function snapHazardsAhead(ang){
+  // geometry REAL (carry to near edge + side vs the shot line); severity/recovery STUB.
+  const cosA=Math.cos(ang),sinA=Math.sin(ang),pX=Math.cos(ang+Math.PI/2),pY=Math.sin(ang+Math.PI/2);
+  const out=[];
+  for(const h of HOLE.hazards){
+    let cx,cy,reach;
+    if(h.type==='bunker'){cx=h.x;cy=h.y;reach=h.r;}
+    else if(h.polygon){let sx=0,sy=0;for(const p of h.polygon){sx+=p[0];sy+=p[1];}cx=sx/h.polygon.length;cy=sy/h.polygon.length;
+      reach=Math.min.apply(null,h.polygon.map(p=>Math.hypot(p[0]-cx,p[1]-cy)));}
+    else continue;
+    const dx=cx-ball.x,dy=cy-ball.y, along=dx*cosA+dy*sinA;
+    if(along<=0)continue;                                   // behind the ball — not "ahead"
+    out.push({type:h.type, carry:Math.round(Math.max(0,along-reach)),
+              side:Math.sign(dx*pX+dy*pY)*-1,               // +right (schema convention)
+              severity:null, recoveryDifficulty:null});     // STUB: Royce rubric pending
+  }
+  return out.sort((a,b)=>a.carry-b.carry);
+}
+function snapGreenRead(){
+  // slope truth at the pin (greenSlopeAt = engine's real grid) + a complexity proxy.
+  // breakTrue/speedTrue need a chosen putt line (start→pin); none yet off the green → null.
+  const gs=greenSlopeAt(PIN.x,PIN.y), dirs=[], R=3;
+  for(let dx=-R;dx<=R;dx+=R)for(let dy=-R;dy<=R;dy+=R)dirs.push(greenSlopeAt(PIN.x+dx,PIN.y+dy).dir);
+  let vx=0,vy=0;for(const d of dirs){vx+=Math.cos(d);vy+=Math.sin(d);}
+  const coh=Math.hypot(vx,vy)/dirs.length;                  // 1 = aligned, 0 = scattered
+  return {slopePctAtPin:gs.pct, slopeDirAtPin:gs.dir, speedStimp:GREEN.stimp,
+          slopeComplexity:Math.max(0,Math.min(1,1-coh)), breakTrue:null, speedTrue:null};
+}
+function snapDifficulty(pt,gread){
+  // PROVISIONAL 0..1 — uncalibrated placeholder shapes only (Dr. Priya owns the real fit).
+  return {
+    wind: clamp(Math.abs(pt?pt.windTerm:0)/25,0,1),
+    elevation: clamp(Math.abs(pt?pt.elevTerm:0)/15,0,1),
+    lie: clamp(({clean:0.1,fluffy:0.3,tight:0.3,divot:0.5,sand:0.8,buried:0.85}[currentLie.quality]??0.2)+currentLie.steep*3,0,1),
+    green: clamp(gread.slopeComplexity*0.7+gread.slopePctAtPin*6,0,1),
+    strategy: null                                          // STUB: hazard-in-play / preferredSide logic pending
+  };
+}
+function snapLayups(distGeom){
+  const out=[];                                             // simple honest geometry: leave a scoring number
+  for(const leave of [150,100]){const toFront=distGeom-leave; if(toFront>30&&leave<distGeom)out.push({toFront:Math.round(toFront),remaining:leave});}
+  return out;
+}
+function buildSnapshot(){
+  const aimX=target?target.x:PIN.x, aimY=target?target.y:PIN.y;
+  const angAim=Math.atan2(aimY-ball.y,aimX-ball.x);
+  const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
+  const distGeom=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
+  let cid=(document.getElementById('club')||{}).value||'7i'; if(cid==='P')cid='7i';
+  const pt=(lie==='green')?null:playingTerms(angPin,distGeom,traj,cid);   // no aerial terms on the green
+  const gread=snapGreenRead();
+  return {
+    ball:{pos:{x:ball.x,y:ball.y}, lie, lieQuality:currentLie.quality},
+    pin:{x:PIN.x,y:PIN.y,tier:PIN.tier,difficulty:PIN.difficulty,guardedBy:PIN.guardedBy},
+    distanceGeom:Math.round(distGeom*10)/10,
+    playsTrue: pt?Math.round(pt.playsTrue*10)/10:Math.round(distGeom*10)/10,  // HIDDEN — grader only, never shown raw
+    components: pt?{elevTerm:pt.elevTerm,windTerm:pt.windTerm,lieTerm:pt.lieTerm}:{elevTerm:0,windTerm:0,lieTerm:0},
+    preferredSide:HOLE.preferredSide,
+    hazardsAhead:snapHazardsAhead(angAim),
+    layups:snapLayups(distGeom),
+    greenRead:gread,
+    conditions:{wind:{ang:WIND.ang,mph:WIND.mph,gust:null,swirl:null}, firmness:effectiveFirmness, stimp:GREEN.stimp},
+    difficulty:snapDifficulty(pt,gread),
+    golfer:{                                                // STUB region
+      ballSpeed:{...golfer.ballSpeed},                      // REAL (3 anchors)
+      dispersion:null, strike:null, spinControl:null, spinGen:null, scrambling:null,
+      sgAroundGreen:null, sgPutting:null, composure:null,
+      _legacy:{accuracy:golfer.accuracy,consistency:golfer.consistency,shortGame:golfer.shortGame,putting:golfer.putting,composure:golfer.composure}
+    },
+    bag:CLUBS.filter(c=>c[0]!=='P').map(c=>({club:c[0],baseCarry:Math.round(carryOf(c[0])),dispersion:null})),
+    pressure:0,
+    courseFamiliarity:null,                                 // STUB — single-hole sandbox
+    _stub:['golfer (legacy 0–100; real metrics at REAL-METRICS migration)',
+           'hazardsAhead.severity / recoveryDifficulty (Royce rubric pending)',
+           'difficulty{} (PROVISIONAL, uncalibrated — Dr. Priya)',
+           'greenRead.breakTrue / speedTrue (need a chosen putt line)',
+           'conditions.wind.gust / swirl (not in prototype WIND yet)',
+           'courseFamiliarity (single-hole sandbox)']
+  };
+}
+// dev-only: dump a live snapshot to the console (Shift+S). Read-only; no UI/layout change.
+window.buildSnapshot=buildSnapshot;
+window.dumpSnapshot=function(){const s=buildSnapshot();console.log('%cSITUATION SNAPSHOT '+VERSION,'font-weight:bold',s);console.log(JSON.stringify(s,null,2));return s;};
+addEventListener('keydown',e=>{if(e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();window.dumpSnapshot();if(typeof flash==='function')flash('Snapshot logged to console (dev).');}});
+
 /* ---------- init ---------- */
 function init(){const sel=document.getElementById('club');
   sel.innerHTML=CLUBS.map(c=>`<option value="${c[0]}">${c[1]}${c[2]?' · '+Math.round(carryOf(c[0]))+'y':''}</option>`).join('');
@@ -1461,8 +1577,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.18.0 — end */
+/* golf-sim 0.18.1 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.18.0 -->
+<!-- golf-sim 0.18.1 -->
