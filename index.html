@@ -1,4 +1,4 @@
-<!-- golf-sim 0.18.1 -->
+<!-- golf-sim 0.19.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.18.1</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.19.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.18.1</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.19.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -195,26 +195,44 @@
   </div>
 </div>
 <script>
-const VERSION='0.18.1';  /* SemVer (SNAPSHOT BATCH — two changes, dev/infra only, no player-facing change.
-   PLAYS TRUE: extracted the elev/wind/lie playing-yardage term math out of resolveShot into ONE pure
-   pre-shot function playingTerms() consumed by BOTH the resolution engine and the snapshot — so the
-   caddy's number can never drift from what the ball actually does. Behavior-preserving refactor
-   (identical formulas; harness-verified equal to the old inline math). SNAPSHOT SPINE: read-only
-   buildSnapshot() (mirrors entities.ts SituationSnapshot) + a dev dump (Shift+S → console, window.dumpSnapshot()).
-   Mutates nothing. THREE flagged stubs: golfer-block (legacy 0–100; real metrics at REAL-METRICS migration),
-   hazard severity/recovery (Royce rubric pending), and the difficulty{} block (PROVISIONAL/uncalibrated — Dr. Priya).
-   Spec: caddie-lens-0.1.0.md. Prev CLEAR VISTA (render-only visibility upgrades).): MAJOR.MINOR.PATCH, pre-1.0 */
+const VERSION='0.19.0';  /* SemVer (SILVER TALON BATCH — REAL-METRICS migration, a gameplay feature + deliberate feel change.
+   REAL METRICS: golfer now described in real units — dispersion{lateral,distance} in YARDS, Strokes-Gained
+   (sgAroundGreen/sgPutting/composure, 0=tour avg), + four v2 inputs (strike[hidden]/spinControl/spinGen/scrambling).
+   All legacy 0–100 ratings (accuracy/consistency/shortGame/putting) removed; model()/resolveShot/resolvePutt
+   rewired off them. Driver dispersion re-tuned to tour-realistic (~26y→~20y σ, ~60% fairways for the pro preset);
+   v2 consumers wired (strike→mishit+distance σ; spinControl→long-club lateral; spinGen→green-release relY;
+   scrambling→bad-lie ARG). Snapshot golfer-block unstubbed. KNOWN CALIBRATION GAP: per-club dispersion CURVE
+   over-tightens irons (7i ~4.6y vs tour ~7y) — the latFactor table double-counts distance; angular-curve fit
+   deferred to Dr. Priya. Values PROVISIONAL, anchored to real tour data. DOCK REWRITE: GOLFER ATTRIBUTES panel
+   + randomizer now show/generate real metrics with benchmark context.
+   Prev SNAPSHOT BATCH (0.18.1) — PLAYS TRUE (shared pre-shot terms) + SNAPSHOT SPINE (read-only buildSnapshot, Shift+S).): MAJOR.MINOR.PATCH, pre-1.0 */
 const cv=document.getElementById('cv'); let ctx=cv.getContext('2d');   // let: drawGreenView retargets ctx to the dock canvas, then restores
 
 /* ---------- golfer ---------- */
-const ATTR_DEFS=[['accuracy','Accuracy'],['consistency','Consistency'],
-  ['shortGame','Short Game'],['putting','Putting'],['composure','Composure']];
+// REAL METRICS (SILVER TALON): golfer described in real units, not 0–100 ratings.
+//   dispersion{lateral,distance} = full-driver 1σ in YARDS (tour driver offline ~17–19y; 7i proximity ~7–9y).
+//   sgAroundGreen / sgPutting / composure = Strokes Gained vs tour baseline (0 = tour avg); composure inert until Lever-B pressure.
+//   v2 (0..1): strike (hidden in play — flush vs catchy), spinControl (long-game), spinGen (scoring stop), scrambling (bad-lie upside).
+// Values PROVISIONAL, anchored to real tour data — Dr. Priya (Statistician) owns the final fit.
+const ATTR_DEFS=[
+  {path:'dispersion.lateral', label:'Dispersion · L/R (σ)', min:8, max:40, step:1, unit:'y', bench:v=>v<=15?'tour-tight':v<=20?'≈tour avg':v<=28?'amateur':'wild'},
+  {path:'dispersion.distance',label:'Dispersion · long/short (σ)', min:5, max:22, step:1, unit:'y', bench:v=>v<=8?'tour-tight':v<=12?'≈tour avg':'loose'},
+  {path:'sgAroundGreen', label:'SG · Around green', min:-2, max:1, step:0.1, unit:'', bench:v=>v>=0.3?'elite':v>=0?'≈tour avg':'below tour'},
+  {path:'sgPutting', label:'SG · Putting', min:-2, max:1, step:0.1, unit:'', bench:v=>v>=0.3?'elite':v>=0?'≈tour avg':'below tour'},
+  {path:'strike', label:'Strike (hidden in play)', min:0.4, max:1, step:0.01, unit:'', bench:v=>v>=0.85?'pure striker':v>=0.7?'solid':'catchy'},
+  {path:'spinControl', label:'Spin control · long', min:0.4, max:1, step:0.01, unit:'', bench:v=>v>=0.82?'top 5%':v>=0.7?'good':'avg'},
+  {path:'spinGen', label:'Spin gen · scoring', min:0.4, max:1, step:0.01, unit:'', bench:v=>v>=0.85?'zips back':v>=0.7?'holds firm':'releases out'},
+  {path:'scrambling', label:'Scrambling', min:0.4, max:1, step:0.01, unit:'', bench:v=>v>=0.82?'magician':v>=0.7?'solid':'avg'},
+  {path:'composure', label:'Composure · SG pressure', min:-1, max:0.6, step:0.1, unit:'', bench:v=>'dormant (Lever B)'}
+];
 const PRESETS={
-  rookie:{ballSpeed:{driver:150,sevenIron:106,pitchingWedge:85},accuracy:42,consistency:40,shortGame:45,putting:46,composure:38},
-  pro:{ballSpeed:{driver:170,sevenIron:120,pitchingWedge:95},accuracy:78,consistency:76,shortGame:80,putting:79,composure:75},
-  bomber:{ballSpeed:{driver:188,sevenIron:123,pitchingWedge:95},accuracy:58,consistency:55,shortGame:62,putting:64,composure:60},
-  surgeon:{ballSpeed:{driver:162,sevenIron:118,pitchingWedge:96},accuracy:92,consistency:88,shortGame:86,putting:82,composure:80}};
-let golfer={...PRESETS.pro};
+  rookie: {ballSpeed:{driver:150,sevenIron:106,pitchingWedge:85}, dispersion:{lateral:30,distance:16}, sgAroundGreen:-1.4, sgPutting:-1.1, composure:-0.5, strike:0.48, spinControl:0.50, spinGen:0.50, scrambling:0.50},
+  pro:    {ballSpeed:{driver:170,sevenIron:120,pitchingWedge:95}, dispersion:{lateral:18,distance:10}, sgAroundGreen:0.0,  sgPutting:0.0,  composure:0.0,  strike:0.78, spinControl:0.78, spinGen:0.78, scrambling:0.78},
+  bomber: {ballSpeed:{driver:188,sevenIron:123,pitchingWedge:95}, dispersion:{lateral:24,distance:13}, sgAroundGreen:-0.2, sgPutting:-0.1, composure:-0.1, strike:0.66, spinControl:0.84, spinGen:0.70, scrambling:0.66},
+  surgeon:{ballSpeed:{driver:162,sevenIron:118,pitchingWedge:96}, dispersion:{lateral:14,distance:7},  sgAroundGreen:0.4,  sgPutting:0.3,  composure:0.2,  strike:0.92, spinControl:0.80, spinGen:0.90, scrambling:0.82}};
+// deep clone so slider edits don't mutate the shared preset (nested ballSpeed/dispersion)
+const clonePreset=p=>({...PRESETS[p], ballSpeed:{...PRESETS[p].ballSpeed}, dispersion:{...PRESETS[p].dispersion}});
+let golfer=clonePreset('pro');
 
 /* ---------- clubs: [id,name,carry@P50,_,latFactor] ---------- */
 const CLUBS=[['D','Driver',250,0,0.14],['3W','3-Wood',230,0,0.12],['5W','5-Wood',214,0,0.10],
@@ -243,6 +261,21 @@ function clubSpeed(a,cid){const c=club(cid)[2],D=club('D')[2],S=club('7i')[2],P=
   const t=(S-P)?Math.max(0,(c-P)/(S-P)):0;return a.pitchingWedge+(a.sevenIron-a.pitchingWedge)*t;}
 const speedMult=cid=>clubSpeed(golfer.ballSpeed,cid)/clubSpeed(SPEED_BASELINE,cid);
 const carryOf=cid=>club(cid)[2]*speedMult(cid);
+/* ---------- REAL METRICS (SILVER TALON) — real units → engine scalars ----------
+   Convert the real golfer inputs into the scalars the resolution formulas consume,
+   calibrated so the `pro` preset reproduces tour-realistic dispersion. Anchors:
+   driver lateral σ ~18y (inferred from ~60% fairways), 7i ~7y; smash 1.49 driver→1.24 wedge;
+   mishit ∝ (1−strike). All PROVISIONAL — Dr. Priya (Statistician) owns the calibration. */
+const LAT_REF=35;        // 250y base × 0.14 driver latFactor — full-driver lateral σ reference
+const DIST_REF=312.5;    // 250y base × 1.25 driver CLUBLEN — full-shot distance σ reference
+const LONGCLUBS={D:1,'3W':1,'5W':1,H:1};
+const SMASH_BASE={D:1.49,'3W':1.48,'5W':1.47,H:1.46,'4i':1.43,'5i':1.41,'6i':1.38,'7i':1.33,'8i':1.30,'9i':1.27,PW:1.24,GW:1.22,SW:1.20,LW:1.18};
+const smashOf=(cid,strike)=>(SMASH_BASE[cid]||1.3)*(0.97+0.04*clamp(strike,0,1));   // strike nudges toward the ceiling (display/derive)
+const clubSpeedExact=cid=>clubSpeed(golfer.ballSpeed,cid)/smashOf(cid,golfer.strike); // mph at the head, ball→club via smash
+const argTouch=()=>clamp(0.80+golfer.sgAroundGreen*0.12,0.30,0.95);   // SG ARG → 0..1 touch (pro=0.80)
+const puttSkill=()=>clamp(0.79+golfer.sgPutting*0.12,0.40,0.95);      // SG putting → 0..1 (pro=0.79), used by resolvePutt
+const getPath=(o,p)=>p.split('.').reduce((a,k)=>a[k],o);
+const setPath=(o,p,v)=>{const ks=p.split('.'),last=ks.pop();ks.reduce((a,k)=>a[k],o)[last]=v;};
 
 /* ---------- hole geometry (yards) — SPINE SWAP (0.5.1) ----------
    Geometry is now sourced from a schema-shaped model (loose JS mirror of
@@ -525,15 +558,18 @@ function model(plan){
   const shapeAmt=(st?0:SHAPES[shape])*carry*0.07;
   const lieCurve = -rel.cross*carry*0.7;            // +cross(rises left)→ negative(left/draw)
   const curve = shapeAmt + lieCurve;                // +right / -left, lateral yds at finish-ish
-  // dispersion
-  const accSkill=plan.finesse?golfer.shortGame:golfer.accuracy;
-  const accF=1.45-accSkill/100;
-  const compF=1+((lie==='bunker'||lie==='rough'?0.12:0)+(plan.finesse?0.08:0))*(1.3-golfer.composure/100);
+  // dispersion — REAL METRICS: yards-based σ (full-driver ref), with v2 modulators
+  const longC=!!LONGCLUBS[cid];
+  let latSkill = plan.finesse ? (0.65 - golfer.sgAroundGreen*0.10) : (golfer.dispersion.lateral/LAT_REF);
+  if(longC && !plan.finesse) latSkill*=(1-0.25*(golfer.spinControl-0.78));            // spinControl tightens long-club lateral
+  if(plan.finesse && (lie==='rough'||lie==='bunker')) latSkill*=(1-0.30*(golfer.scrambling-0.78)); // scrambling: upside from trouble
+  latSkill=Math.max(0.12,latSkill);
+  const compF=1+((lie==='bunker'||lie==='rough'?0.12:0)+(plan.finesse?0.08:0))*0.55;  // composure inert until Lever-B pressure (fixed baseline)
   const latLieM={tee:1,fairway:1,fringe:1.1,rough:1.5,bunker:1.9}[lie]||1.1;
   const distLieM={tee:1,fairway:1,fringe:1.1,rough:1.35,bunker:1.6}[lie]||1.1;
   const eff=plan.intended/Math.max(plan.maxCarry,1);
   let partial=1+Math.max(0,0.78-eff)*0.9+Math.max(0,eff-0.98)*0.5;
-  if(plan.finesse)partial=1+(partial-1)*(1.2-golfer.shortGame/100);
+  if(plan.finesse)partial=1+(partial-1)*(1.2-argTouch());
   const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
   const head=-(wu.x*Math.cos(plan.ang)+wu.y*Math.sin(plan.ang));
   const windF=1+Math.max(0,head)*(WIND.mph/100)*2.0*t.wind;   // GALE FORCE: 1.1 → 2.0 (paired with windYds 0.5 → 0.9; both wind sites scale together)
@@ -542,8 +578,10 @@ function model(plan){
   const stancePen=1+currentLie.steep*5+Math.abs(rel.cross)*4;
   const fight=(SHAPES[shape]&&Math.sign(SHAPES[shape])===-Math.sign(lieCurve||0)&&lieCurve!==0)?1.22:1; // shaping against the lie
   const highPen=canHigh?1:1.5;
-  const lat=Math.max(0.5, plan.intended*plan.club[4]*accF*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
-  const dist=Math.max(1, plan.intended*(0.012+(1-golfer.consistency/100)*0.085)*CLUBLEN[cid]*plan.sDisp*distLieM*partial*windF*qPen*highPen);
+  const lat=Math.max(0.5, plan.intended*plan.club[4]*latSkill*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
+  let distCoef=(golfer.dispersion.distance/DIST_REF)*(1-0.5*(golfer.strike-0.78));   // strike tightens distance σ
+  distCoef=Math.max(0.004,distCoef);
+  const dist=Math.max(1, plan.intended*distCoef*CLUBLEN[cid]*plan.sDisp*distLieM*partial*windF*qPen*highPen);
   return{carry,rollF,apex,curve,lat,dist,canHigh,agRoll,
     land:{x:ball.x+Math.cos(plan.ang)*carry,y:ball.y+Math.sin(plan.ang)*carry}};
 }
@@ -554,7 +592,7 @@ function resolveShot(){
   if(plan.isPutt){resolvePutt(plan);return;}
   const m=model(plan),cid=plan.cid;
   let carry=m.carry+gauss()*m.dist, latOff=gauss()*m.lat, note='', flyer=false;
-  const mishitP=0.015+(1-golfer.consistency/100)*0.08+({rough:0.04,bunker:0.08}[lie]||0)+(currentLie.quality==='divot'?0.08:0);
+  const mishitP=0.015+(1-golfer.strike)*0.09+({rough:0.04,bunker:0.08}[lie]||0)+(currentLie.quality==='divot'?0.08:0);   // REAL METRICS: strike (flush vs catchy) drives mishits
   if(Math.random()<mishitP){carry*=0.6+Math.random()*0.22;latOff*=1.8;note='Mishit. ';}
   // TRUE SPEED: the carry attributable to BALL SPEED — captured after dispersion + mishit
   // (both are speed/strike effects) but BEFORE flyer (a spin effect, not speed), wind, and
@@ -601,7 +639,7 @@ function resolveShot(){
   }else if(nearG){ // full shot landing on/near the green — release down the slope
     let grip=({fairway:1,tee:1,rough:0.4,bunker:0.55,fringe:0.8})[lie]??0.7; if(flyer)grip=0.15;
     const stopF=TRAJ[traj].roll;
-    const relY=(3+SPIN[cid]*15)*(1.25-grip)*stopF;
+    const relY=(3+SPIN[cid]*15*(1+0.8*(golfer.spinGen-0.78)))*(1.25-grip)*stopF;   // REAL METRICS: spinGen scales scoring spin (zip-back vs release-out)
     const gs=greenSlopeAt(ex,ey);   // TRUE BREAK: grid at landing
     ex+=cosA*relY*0.42+Math.cos(gs.dir)*relY*(0.58+gs.pct*7);
     ey+=sinA*relY*0.42+Math.sin(gs.dir)*relY*(0.58+gs.pct*7);
@@ -727,7 +765,7 @@ function solveAim(pace){
   _aimCache={key,val:out};return out;
 }
 function resolvePutt(plan){
-  const skill=golfer.putting/100;
+  const skill=puttSkill();   // REAL METRICS: SG putting → 0..1 (pro = 0.79)
   const sol=solveAim(pace);
   const D=sol.D;
   // line error: charge holds the line a touch better (firmer roll); skill tightens, distance loosens
@@ -1397,24 +1435,31 @@ function buildBag(){const t=document.getElementById('bag');
   let h='<thead><tr><th>Club</th><th>Carry</th><th>±L/R</th><th>±Dist</th></tr></thead><tbody>';
   ['D','5W','H','5i','7i','9i','PW','SW'].forEach(id=>{const c=club(id);
     const car=carryOf(id);
-    const lat=(car*c[4]*(1.45-golfer.accuracy/100)).toFixed(0);
-    const dst=(car*(0.012+(1-golfer.consistency/100)*0.085)*CLUBLEN[id]).toFixed(0);
+    // REAL METRICS: clean full-swing base σ (mirrors model() without lie/wind/stance multipliers)
+    let latSk=golfer.dispersion.lateral/LAT_REF; if(LONGCLUBS[id])latSk*=(1-0.25*(golfer.spinControl-0.78));
+    const lat=(car*c[4]*latSk).toFixed(0);
+    const dst=(car*(golfer.dispersion.distance/DIST_REF)*(1-0.5*(golfer.strike-0.78))*CLUBLEN[id]).toFixed(0);
     h+=`<tr><td>${c[1]}</td><td>${Math.round(car)}</td><td>±${lat}</td><td>±${dst}</td></tr>`;});
   t.innerHTML=h+'</tbody>';}
 function buildAttrs(){const w=document.getElementById('attrs');w.innerHTML='';
-  // REAL METRICS: ball speed (mph) at the three anchor clubs — drives carry (provisional model)
-  const BS=[['driver','Ball speed · Driver',140,196],['sevenIron','Ball speed · 7-iron',95,136],['pitchingWedge','Ball speed · PW',78,110]];
+  // REAL METRICS: ball speed (mph) at three anchors — drives carry; show derived club speed via smash
+  const BS=[['driver','Ball speed · Driver',130,200],['sevenIron','Ball speed · 7-iron',95,140],['pitchingWedge','Ball speed · PW',75,110]];
+  const bsBench={driver:v=>v>=185?'top 1%':v>=170?'≈tour avg':v>=150?'amateur':'beginner',sevenIron:v=>v>=125?'tour+':v>=118?'≈tour avg':'amateur',pitchingWedge:v=>v>=98?'tour+':v>=93?'≈tour avg':'amateur'};
   BS.forEach(([k,label,mn,mx])=>{const d=document.createElement('div');d.className='attr';
-    d.innerHTML=`<div class="top"><span>${label}</span><b id="v_bs_${k}">${golfer.ballSpeed[k]} mph</b></div>
+    const lab=()=>`${golfer.ballSpeed[k]} mph · ${bsBench[k](golfer.ballSpeed[k])}`;
+    d.innerHTML=`<div class="top"><span>${label}</span><b id="v_bs_${k}">${lab()}</b></div>
       <input type="range" min="${mn}" max="${mx}" value="${golfer.ballSpeed[k]}" id="a_bs_${k}">`;w.appendChild(d);
     d.querySelector('input').addEventListener('input',e=>{golfer.ballSpeed[k]=+e.target.value;
-      document.getElementById('v_bs_'+k).textContent=golfer.ballSpeed[k]+' mph';buildBag();render();});});
-  ATTR_DEFS.forEach(([k,label])=>{const d=document.createElement('div');d.className='attr';
-    d.innerHTML=`<div class="top"><span>${label}</span><b id="v_${k}">${golfer[k]}</b></div>
-      <input type="range" min="1" max="100" value="${golfer[k]}" id="a_${k}">`;w.appendChild(d);
-    d.querySelector('input').addEventListener('input',e=>{golfer[k]=+e.target.value;
-      document.getElementById('v_'+k).textContent=golfer[k];buildBag();render();});});}
-function setPreset(p){golfer={...PRESETS[p]};buildAttrs();buildBag();render();}
+      document.getElementById('v_bs_'+k).textContent=lab();buildBag();render();});});
+  // REAL METRICS: dispersion (yds) · SG · v2 inputs — each shown with benchmark context (Mara rule)
+  ATTR_DEFS.forEach(def=>{const d=document.createElement('div');d.className='attr';
+    const safe=def.path.replace('.','_'), val=getPath(golfer,def.path);
+    const show=v=>(def.unit?`${v}${def.unit}`:(+v).toFixed(2))+` · ${def.bench(+v)}`;
+    d.innerHTML=`<div class="top"><span>${def.label}</span><b id="v_${safe}">${show(val)}</b></div>
+      <input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${val}" id="a_${safe}">`;w.appendChild(d);
+    d.querySelector('input').addEventListener('input',e=>{const v=+e.target.value;setPath(golfer,def.path,v);
+      document.getElementById('v_'+safe).textContent=show(v);buildBag();render();});});}
+function setPreset(p){golfer=clonePreset(p);buildAttrs();buildBag();render();}
 let commTimer;function flash(t){const e=document.getElementById('comm');e.textContent=t;e.style.opacity=1;
   clearTimeout(commTimer);commTimer=setTimeout(()=>e.style.opacity=0,3400);}
 function log(t){const l=document.getElementById('log');l.innerHTML=`<div><span class="s">${strokes}.</span> ${t}</div>`+l.innerHTML;}
@@ -1460,7 +1505,14 @@ rowSel('trajrow','t',v=>traj=v);
 rowSel('styperow','s',v=>shotType=v);
 rowSel('pacerow','pc',v=>pace=v);
 document.querySelectorAll('.preset button').forEach(b=>b.addEventListener('click',()=>setPreset(b.dataset.pre)));
-document.getElementById('randbtn').addEventListener('click',()=>{ATTR_DEFS.forEach(([k])=>golfer[k]=20+rnd(75));golfer.ballSpeed={driver:145+rnd(48),sevenIron:98+rnd(34),pitchingWedge:80+rnd(26)};buildAttrs();buildBag();render();});
+document.getElementById('randbtn').addEventListener('click',()=>{
+  golfer.ballSpeed={driver:145+rnd(48),sevenIron:98+rnd(34),pitchingWedge:80+rnd(26)};
+  golfer.dispersion={lateral:13+rnd(22),distance:6+rnd(13)};
+  golfer.sgAroundGreen=Math.round((-1.5+Math.random()*2)*10)/10;
+  golfer.sgPutting=Math.round((-1.5+Math.random()*2)*10)/10;
+  golfer.composure=Math.round((-0.8+Math.random()*1.2)*10)/10;
+  ['strike','spinControl','spinGen','scrambling'].forEach(k=>golfer[k]=Math.round((0.5+Math.random()*0.45)*100)/100);
+  buildAttrs();buildBag();render();});
 function resetControls(){shape='straight';traj='mid';shotType='auto';pace='die';
   [['swingrow','stock','p'],['shaperow','straight','sh'],['trajrow','mid','t'],['pacerow','die','pc']].forEach(([r,val,a])=>{
     document.querySelectorAll('#'+r+' .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset[a]===val));});
@@ -1474,7 +1526,7 @@ document.getElementById('pin').addEventListener('change',e=>{pinIdx=+e.target.va
 window.addEventListener("resize",()=>{fit();fitLie();fitGreen();render();drawLie();drawGreenView();});
 
 /* ===================================================================
- * SNAPSHOT SPINE (0.18.1) — read-only Situation Snapshot generator.
+ * SNAPSHOT SPINE (0.19.0) — read-only Situation Snapshot generator.
  * Mirrors entities.ts `SituationSnapshot`; spec: caddie-lens-0.1.0.md.
  * Reads live engine state, MUTATES NOTHING. This is the hidden ground truth
  * the caddy will later DISTORT into an estimate (input-misread, never shown raw).
@@ -1546,17 +1598,17 @@ function buildSnapshot(){
     greenRead:gread,
     conditions:{wind:{ang:WIND.ang,mph:WIND.mph,gust:null,swirl:null}, firmness:effectiveFirmness, stimp:GREEN.stimp},
     difficulty:snapDifficulty(pt,gread),
-    golfer:{                                                // STUB region
-      ballSpeed:{...golfer.ballSpeed},                      // REAL (3 anchors)
-      dispersion:null, strike:null, spinControl:null, spinGen:null, scrambling:null,
-      sgAroundGreen:null, sgPutting:null, composure:null,
-      _legacy:{accuracy:golfer.accuracy,consistency:golfer.consistency,shortGame:golfer.shortGame,putting:golfer.putting,composure:golfer.composure}
+    golfer:{                                                // REAL METRICS — now live
+      ballSpeed:{...golfer.ballSpeed},                      // 3 anchors (mph)
+      dispersion:{...golfer.dispersion},                    // yards, 1σ
+      strike:golfer.strike,                                 // hidden from player UI; caddy reasons over it
+      spinControl:golfer.spinControl, spinGen:golfer.spinGen, scrambling:golfer.scrambling,
+      sgAroundGreen:golfer.sgAroundGreen, sgPutting:golfer.sgPutting, composure:golfer.composure
     },
-    bag:CLUBS.filter(c=>c[0]!=='P').map(c=>({club:c[0],baseCarry:Math.round(carryOf(c[0])),dispersion:null})),
+    bag:CLUBS.filter(c=>c[0]!=='P').map(c=>({club:c[0],baseCarry:Math.round(carryOf(c[0])),dispersion:null})),  // per-club dispersion derived later
     pressure:0,
     courseFamiliarity:null,                                 // STUB — single-hole sandbox
-    _stub:['golfer (legacy 0–100; real metrics at REAL-METRICS migration)',
-           'hazardsAhead.severity / recoveryDifficulty (Royce rubric pending)',
+    _stub:['hazardsAhead.severity / recoveryDifficulty (Royce rubric pending)',
            'difficulty{} (PROVISIONAL, uncalibrated — Dr. Priya)',
            'greenRead.breakTrue / speedTrue (need a chosen putt line)',
            'conditions.wind.gust / swirl (not in prototype WIND yet)',
@@ -1577,8 +1629,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.18.1 — end */
+/* golf-sim 0.19.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.18.1 -->
+<!-- golf-sim 0.19.0 -->
