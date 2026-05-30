@@ -1,4 +1,4 @@
-<!-- golf-sim 0.19.0 -->
+<!-- golf-sim 0.19.1 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.19.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.19.1</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.19.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.19.1</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -195,7 +195,11 @@
   </div>
 </div>
 <script>
-const VERSION='0.19.0';  /* SemVer (SILVER TALON BATCH — REAL-METRICS migration, a gameplay feature + deliberate feel change.
+const VERSION='0.19.1';  /* SemVer (IRON LADDER — calibration patch on REAL METRICS. Per-club lateral dispersion
+   refit: replaced the length-coupled latFactor (which double-counted distance and over-tightened irons) with a
+   tour-proximity-anchored σ-per-yard curve LATCURVE + normalized latSkill (dispersion.lateral/18). Driver held at
+   ~19y/~60% fairways; 7i corrected 4.6y→7.5y; wedge ~5y. Still PROVISIONAL (Dr. Priya). Touched model() lateral + buildBag.
+   Prev SILVER TALON (0.19.0) — REAL-METRICS migration:
    REAL METRICS: golfer now described in real units — dispersion{lateral,distance} in YARDS, Strokes-Gained
    (sgAroundGreen/sgPutting/composure, 0=tour avg), + four v2 inputs (strike[hidden]/spinControl/spinGen/scrambling).
    All legacy 0–100 ratings (accuracy/consistency/shortGame/putting) removed; model()/resolveShot/resolvePutt
@@ -266,7 +270,11 @@ const carryOf=cid=>club(cid)[2]*speedMult(cid);
    calibrated so the `pro` preset reproduces tour-realistic dispersion. Anchors:
    driver lateral σ ~18y (inferred from ~60% fairways), 7i ~7y; smash 1.49 driver→1.24 wedge;
    mishit ∝ (1−strike). All PROVISIONAL — Dr. Priya (Statistician) owns the calibration. */
-const LAT_REF=35;        // 250y base × 0.14 driver latFactor — full-driver lateral σ reference
+// IRON LADDER: per-club lateral σ-per-yard, fit to tour proximity-by-distance (decoupled from the
+// length-coupled latFactor). σ_lat = intended × LATCURVE[club] × latSkill, latSkill = dispersion.lateral/LAT_NORM.
+// Calibrated so a tour-avg 18y driver → latSkill 1.0 lands pro at ~19y D / ~7y 7i / ~5y PW. Provisional (Dr. Priya).
+const LAT_NORM=18;
+const LATCURVE={D:0.069,'3W':0.064,'5W':0.060,H:0.055,'4i':0.051,'5i':0.049,'6i':0.047,'7i':0.044,'8i':0.044,'9i':0.042,PW:0.039,GW:0.040,SW:0.044,LW:0.050};
 const DIST_REF=312.5;    // 250y base × 1.25 driver CLUBLEN — full-shot distance σ reference
 const LONGCLUBS={D:1,'3W':1,'5W':1,H:1};
 const SMASH_BASE={D:1.49,'3W':1.48,'5W':1.47,H:1.46,'4i':1.43,'5i':1.41,'6i':1.38,'7i':1.33,'8i':1.30,'9i':1.27,PW:1.24,GW:1.22,SW:1.20,LW:1.18};
@@ -558,9 +566,9 @@ function model(plan){
   const shapeAmt=(st?0:SHAPES[shape])*carry*0.07;
   const lieCurve = -rel.cross*carry*0.7;            // +cross(rises left)→ negative(left/draw)
   const curve = shapeAmt + lieCurve;                // +right / -left, lateral yds at finish-ish
-  // dispersion — REAL METRICS: yards-based σ (full-driver ref), with v2 modulators
+  // dispersion — REAL METRICS + IRON LADDER: per-club σ-per-yard curve, with v2 modulators
   const longC=!!LONGCLUBS[cid];
-  let latSkill = plan.finesse ? (0.65 - golfer.sgAroundGreen*0.10) : (golfer.dispersion.lateral/LAT_REF);
+  let latSkill = plan.finesse ? (0.85 - golfer.sgAroundGreen*0.12) : (golfer.dispersion.lateral/LAT_NORM);
   if(longC && !plan.finesse) latSkill*=(1-0.25*(golfer.spinControl-0.78));            // spinControl tightens long-club lateral
   if(plan.finesse && (lie==='rough'||lie==='bunker')) latSkill*=(1-0.30*(golfer.scrambling-0.78)); // scrambling: upside from trouble
   latSkill=Math.max(0.12,latSkill);
@@ -578,7 +586,7 @@ function model(plan){
   const stancePen=1+currentLie.steep*5+Math.abs(rel.cross)*4;
   const fight=(SHAPES[shape]&&Math.sign(SHAPES[shape])===-Math.sign(lieCurve||0)&&lieCurve!==0)?1.22:1; // shaping against the lie
   const highPen=canHigh?1:1.5;
-  const lat=Math.max(0.5, plan.intended*plan.club[4]*latSkill*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
+  const lat=Math.max(0.5, plan.intended*(LATCURVE[cid]||0.05)*latSkill*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
   let distCoef=(golfer.dispersion.distance/DIST_REF)*(1-0.5*(golfer.strike-0.78));   // strike tightens distance σ
   distCoef=Math.max(0.004,distCoef);
   const dist=Math.max(1, plan.intended*distCoef*CLUBLEN[cid]*plan.sDisp*distLieM*partial*windF*qPen*highPen);
@@ -1435,9 +1443,9 @@ function buildBag(){const t=document.getElementById('bag');
   let h='<thead><tr><th>Club</th><th>Carry</th><th>±L/R</th><th>±Dist</th></tr></thead><tbody>';
   ['D','5W','H','5i','7i','9i','PW','SW'].forEach(id=>{const c=club(id);
     const car=carryOf(id);
-    // REAL METRICS: clean full-swing base σ (mirrors model() without lie/wind/stance multipliers)
-    let latSk=golfer.dispersion.lateral/LAT_REF; if(LONGCLUBS[id])latSk*=(1-0.25*(golfer.spinControl-0.78));
-    const lat=(car*c[4]*latSk).toFixed(0);
+    // REAL METRICS + IRON LADDER: clean full-swing base σ (mirrors model() without lie/wind/stance multipliers)
+    let latSk=golfer.dispersion.lateral/LAT_NORM; if(LONGCLUBS[id])latSk*=(1-0.25*(golfer.spinControl-0.78));
+    const lat=(car*(LATCURVE[id]||0.05)*latSk).toFixed(0);
     const dst=(car*(golfer.dispersion.distance/DIST_REF)*(1-0.5*(golfer.strike-0.78))*CLUBLEN[id]).toFixed(0);
     h+=`<tr><td>${c[1]}</td><td>${Math.round(car)}</td><td>±${lat}</td><td>±${dst}</td></tr>`;});
   t.innerHTML=h+'</tbody>';}
@@ -1629,8 +1637,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.19.0 — end */
+/* golf-sim 0.19.1 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.19.0 -->
+<!-- golf-sim 0.19.1 -->
