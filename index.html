@@ -1,4 +1,4 @@
-<!-- golf-sim 0.19.1 -->
+<!-- golf-sim 0.20.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.19.1</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.20.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -152,7 +152,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.19.1</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.20.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -165,6 +165,10 @@
         <canvas id="lieview" style="width:100%;height:132px;display:block;border:1px solid #2f4a39;border-radius:7px;margin-bottom:8px;background:#0c1812"></canvas>
         <div style="font-size:11px;color:var(--gold-lt);letter-spacing:.04em;margin:0 0 4px">Green <span id="greentag" style="color:var(--muted)"></span></div>
         <canvas id="greenview" style="width:100%;height:150px;display:block;border:1px solid #2f4a39;border-radius:7px;margin-bottom:8px;background:#0c1812"></canvas>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <label class="fld" style="margin:0">Caddie</label>
+          <select id="caddiesel" style="flex:1"><option value="competent">Denny Rourke · Competent</option><option value="elite">Marisol Vega · Elite</option></select>
+        </div>
         <div id="caddie" style="background:#0e1b13;border:1px solid #2f4a39;border-radius:7px;padding:8px 10px;font-size:12px;line-height:1.5;margin-bottom:9px;color:var(--muted)"></div>
         <div class="smallnote" id="aimhint" style="margin-top:0;margin-bottom:9px">▸ Click the course to set your target line.</div>
         <div id="pacewrap" style="display:none">
@@ -195,7 +199,17 @@
   </div>
 </div>
 <script>
-const VERSION='0.19.1';  /* SemVer (IRON LADDER — calibration patch on REAL METRICS. Per-club lateral dispersion
+const VERSION='0.20.0';  /* SemVer (AMBER LYNX — CADDIE LENS, rules-based read. First player-visible caddie output.
+   Replaced the ORACLE caddieRead() full-shot path (which printed true wind + true break) with a lens-distorted
+   ESTIMATE: a caddie reads the snapshot's signed factor terms (windTerm/elevTerm/lieTerm from components{}) through
+   its own distorted dials (dial = 1 + dir×leanSize; two-term lean: skillGap×(1−familiarity) + skillGap×(hardness−1))
+   and lands on an estimated playing yardage + confidence + templated reasoning (CaddyTurn read half). Two authored
+   caddies (Competent / Elite) + a selector to show the competent→elite spread. SNAPSHOT-ONLY: never reads playsTrue
+   or live WIND/grid globals. Putt/green read path UNCHANGED (breakTrue null off-green — deferred). Dial constants
+   (leanStrength, hardness magnitudes, skill→leanSize) are PROVISIONAL placeholders — NOT calibrated to ~0.5–1.0
+   strokes/round (Dr. Priya owns the fit). Caddie uses `playingYards` (the §10 rename of windExpertise), not yet in
+   entities.ts. Recommendation half (club pick) is GENERIC — no rapport/golfer-fit yet (Nova).
+   Prev IRON LADDER (0.19.1) — calibration patch on REAL METRICS. Per-club lateral dispersion
    refit: replaced the length-coupled latFactor (which double-counted distance and over-tightened irons) with a
    tour-proximity-anchored σ-per-yard curve LATCURVE + normalized latSkill (dispersion.lateral/18). Driver held at
    ~19y/~60% fairways; 7i corrected 4.6y→7.5y; wedge ~5y. Still PROVISIONAL (Dr. Priya). Touched model() lateral + buildBag.
@@ -491,6 +505,66 @@ const TRAJ={high:{apex:1.6,roll:0.45,wind:1.4},mid:{apex:1.0,roll:1.0,wind:1.0},
 // (real rule ~1y / 5ft = 0.6). High apex catches more elevation; punch shrugs it off.
 // k_elev is a Dr. Priya tunable (contract §7). Distinct from the stance/lie tilt in model().
 const K_ELEV=0.6, ELEVTRAJ={high:1.3,mid:1.0,low:0.7,punch:0.4};
+
+/* ===================================================================
+ * AMBER LYNX (0.20.0) — CADDIE LENS (rules-based read). Spec: caddie-lens-0.1.0.md.
+ * The caddie reads the snapshot's signed factor TERMS through its own distorted
+ * dials and lands on a wrong number ITSELF (input-misread, never output-fudge).
+ * It NEVER receives playsTrue (that exists only to grade it) and reads the
+ * SNAPSHOT ONLY — never the live WIND / slope-grid globals.
+ * Two authored caddies show the competent→elite spread.
+ * Forward-compat: caddie uses `playingYards` (the §10 rename of windExpertise),
+ * with disposition on the §10 reconciled axis set {playingYards, greenReading,
+ * shortGame, strategy} — NOT yet applied to entities.ts.
+ * ALL constants below are PROVISIONAL placeholders (Dr. Priya owns the real fit;
+ * the strokes/round spread is NOT calibrated).
+ * =================================================================== */
+const CADDIES={
+  // competent: low reads, big lean, biased — chronically under-reads wind/elev, over-reads lie
+  competent:{ id:'cad_comp', name:'Denny Rourke', tier:'Competent',
+    playingYards:0.60, greenReading:0.58, shortGame:0.62, courseManagement:0.60,
+    localKnowledge:0.55, leanStrength:1.0,
+    disposition:{ playingYards:-1, greenReading:-1, shortGame:1, strategy:0 } },
+  // elite: high reads, small lean, near-unbiased (faint over-read on tricky greens only)
+  elite:{ id:'cad_elite', name:'Marisol Vega', tier:'Elite',
+    playingYards:0.90, greenReading:0.92, shortGame:0.88, courseManagement:0.90,
+    localKnowledge:0.85, leanStrength:0.55,
+    disposition:{ playingYards:0, greenReading:1, shortGame:0, strategy:0 } }
+};
+let caddieKey='competent';                 // UI selector (default: the more-wrong one, so the spread shows on flip)
+const caddie=()=>CADDIES[caddieKey];
+// provisional stand-in until courseFamiliarity is real (single-hole sandbox; STUB in buildSnapshot)
+const PROVISIONAL_FAMILIARITY=0.5;
+// hardness ≥ 1. Wind rides swirl/gust (genuinely hard); elevation is steady (=1);
+// lie hardness rides the snapshot's provisional difficulty.lie. (caddie-lens §3, §4.)
+function windHardness(snap){ const sw=snap.conditions.wind.swirl; return 1+(sw!=null?sw:0)*0.8; }
+function lieHardness(snap){ return 1+(snap.difficulty.lie!=null?snap.difficulty.lie:0)*0.8; }
+// the dial (caddie-lens §3): multiplicative, two-term lean, clamped ≥0 (§3.4 safeguard).
+function dial(skill, dir, hardness, familiarity, leanStrength){
+  const skillGap=1-skill;
+  const leanSize=leanStrength*( skillGap*(1-familiarity) + skillGap*(hardness-1) );
+  return Math.max(0, 1 + dir*leanSize);
+}
+// rules-based read half of a CaddyTurn. Consumes the SNAPSHOT only.
+// Returns the caddie's ESTIMATED playing yardage (never playsTrue) + per-term estimates + confidence.
+function caddieLensRead(snap, cad){
+  const c=snap.components;                                  // signed, +=plays LONGER (REAL terms)
+  const courseFam=(snap.courseFamiliarity!=null?snap.courseFamiliarity:PROVISIONAL_FAMILIARITY);
+  const fam=cad.localKnowledge*courseFam;                   // §5: familiarity = localKnowledge × courseFamiliarity
+  const dPY=cad.disposition.playingYards, dSG=cad.disposition.shortGame;
+  // playingYards reads BOTH wind & elevation (one skill, separate hardness — caddie-lens §4)
+  const windDial=dial(cad.playingYards, dPY, windHardness(snap), fam, cad.leanStrength);
+  const elevDial=dial(cad.playingYards, dPY, 1,                 fam, cad.leanStrength); // elevation steady
+  const lieDial =dial(cad.shortGame,    dSG, lieHardness(snap),  fam, cad.leanStrength);
+  const estWind=c.windTerm*windDial, estElev=c.elevTerm*elevDial, estLie=c.lieTerm*lieDial;
+  const estPlays=snap.distanceGeom+estWind+estElev+estLie;
+  // confidence: difficulty × (1−skill) on the read axes (provisional, uncalibrated).
+  const d=snap.difficulty, gPY=1-cad.playingYards, gSG=1-cad.shortGame;
+  const conf=clamp(1-((d.wind||0)*gPY+(d.elevation||0)*gPY+(d.lie||0)*gSG), 0.2, 0.99);
+  // generic club pick (NO rapport/golfer-fit — closest baseCarry to the estimate).
+  let rec=snap.bag[0]; for(const b of snap.bag){ if(Math.abs(b.baseCarry-estPlays)<Math.abs(rec.baseCarry-estPlays))rec=b; }
+  return { estPlays, estWind, estElev, estLie, confidence:conf, recClub:rec.club, recCarry:rec.baseCarry };
+}
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
 const SHAPES={draw:-1,straight:0,fade:1};
@@ -1426,17 +1500,23 @@ function caddieRead(){
     s+=`<br><span style="color:var(--muted);font-size:11px">Pace targets (past the hole): ${leaves}</span>`;
     return s;
   }
-  // wind relative to the line to the pin
-  const toPinAng=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
-  const wu={x:Math.cos(WIND.ang),y:Math.sin(WIND.ang)};
-  const along=wu.x*Math.cos(toPinAng)+wu.y*Math.sin(toPinAng);
-  const cross=wu.x*Math.cos(toPinAng+Math.PI/2)+wu.y*Math.sin(toPinAng+Math.PI/2);
-  let wtxt;
-  if(WIND.mph<5)wtxt='calm';
-  else{const dir=along>0.5?'helping':along<-0.5?'into your face':'crosswind';
-    const side=Math.abs(cross)>0.4?(cross>0?' R→L':' L→R'):'';wtxt=WIND.mph+' mph '+dir+side;}
-  let s=`<b style="color:#5fb0e8">Wind:</b> ${wtxt}`;
-  s+=`<br><b style="color:#d9b34c">Lie:</b> ${lieTendency()}`;
+  // AMBER LYNX: lens-distorted ESTIMATE (caddie-lens-0.1.0). Snapshot-only; never reads
+  // WIND/grid globals or playsTrue. The player sees the caddie's number, not the truth.
+  const snap=buildSnapshot(), cad=caddie(), r=caddieLensRead(snap,cad);
+  const est=Math.round(r.estPlays), geom=Math.round(snap.distanceGeom), d=est-geom;
+  const deltaTxt = Math.abs(d)<2 ? 'right around the number'
+                 : (d>0?`about ${d} longer than the stick`:`about ${-d} shorter than the stick`);
+  // dominant factor(s) in the CADDIE'S OWN read (its estimates, not truth) — qualitative only
+  const facs=[['the wind',r.estWind],['the elevation',r.estElev],['the lie',r.estLie]]
+    .filter(f=>Math.abs(f[1])>=1.5).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const why = facs.length? ' — '+facs.slice(0,2).map(f=>`${f[0]} ${f[1]>0?'adds':'takes off'} ~${Math.abs(Math.round(f[1]))}`).join(', ') : '';
+  const confPct=Math.round(r.confidence*100);
+  const confTag = r.confidence<0.55 ? `<span style="color:#c98b5a">low confidence (${confPct}%) — tricky read</span>` : `confidence ${confPct}%`;
+  const first=cad.name.split(' ')[0], lbl=(club(r.recClub)||[,r.recClub])[1];
+  let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
+  s+=`<b style="color:#7bc26a">Plays ~${est}y</b> <span style="color:var(--muted)">(${deltaTxt})</span>`;
+  s+=`<br><span style="color:var(--muted)">${first}: “I’d go ${lbl}${why}.”</span>`;
+  s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
   return s;
 }
 function buildBag(){const t=document.getElementById('bag');
@@ -1503,6 +1583,9 @@ cv.addEventListener('click',e=>{if(holed||anim||puttingNow())return;const r=cv.g
   if(Math.hypot(cx-PIN.x,cy-PIN.y)<2.2){cx=PIN.x;cy=PIN.y;} // snap to pin
   target={x:cx,y:cy};aiming=true;render();drawLie();drawGreenView();});
 document.getElementById('hit').addEventListener('click',resolveShot);
+// AMBER LYNX: swap caddie, re-render the read against the current shot (read-only).
+document.getElementById('caddiesel').addEventListener('change',e=>{caddieKey=e.target.value;
+  const el=document.getElementById('caddie');if(el)el.innerHTML=caddieRead();});
 document.getElementById('club').addEventListener('change',()=>{shotType='auto';document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));sync();render();});
 function rowSel(rowId,attr,cb){const row=document.getElementById(rowId);if(!row)return;
   row.querySelectorAll('.pwbtn').forEach(b=>b.addEventListener('click',()=>{
@@ -1637,8 +1720,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.19.1 — end */
+/* golf-sim 0.20.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.19.1 -->
+<!-- golf-sim 0.20.0 -->
