@@ -1,4 +1,4 @@
-<!-- golf-sim 0.21.0 -->
+<!-- golf-sim 0.22.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.21.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.22.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -144,6 +144,7 @@
         <label class="fld" style="margin-top:10px">Pin position</label>
         <select id="pin"></select>
         <button class="reset" id="newhole" style="width:100%;margin-top:8px">New attempt (random wind)</button>
+        <button class="reset" id="nexthole" style="width:100%;margin-top:6px">Next hole →</button>
       </div>
     </div></div>
   </div>
@@ -152,7 +153,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.21.0</span></div></div>
+    <div class="titleplate"><div class="h">Hole 7 · Par 4</div><div class="s">The Bend · 401 yds · <span id="verstamp2">0.22.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -199,7 +200,15 @@
   </div>
 </div>
 <script>
-const VERSION='0.21.0';  /* SemVer (MOSSY KETTLE BATCH = PEWTER OTTER + COBALT WREN.
+const VERSION='0.22.0';  /* SemVer.
+   LANTERN MAGPIE (0.22.0, minor — multi-hole plumbing): holes are now an ARRAY (HOLES) with an
+   activeHoleIdx + a "Next hole →" control. The renderer, buildSnapshot, resolveShot, green view,
+   yardage book, etc. all read the ACTIVE hole via let-bound derived globals (HOLE/GREEN/PINS/TEE/
+   CENTER/FAIRWAY/BUNKERS/WATER/TREES/OBST), recomputed by loadHole(idx). Per-hole shape that used
+   to be module-global now lives ON the hole: trees, obst, the elevation field (elevFn) and the green
+   surface (greenFn, incl. the GREEN_BACK/GREEN_FF shelf tunables). No new holes authored — single
+   hole still (The Bend = HOLES[0]); the array is just the structure so authoring = data on top.
+   Behaviour for The Bend is byte-for-byte unchanged. Prev MOSSY KETTLE BATCH (0.21.0) = PEWTER OTTER + COBALT WREN.
    PEWTER OTTER (fix): buildSnapshot now reads the SHOT being hit — attempted carry along the aim line,
    mirroring resolveShot's plan (plan.ang/plan.intended) — instead of the full geometric distance to the
    pin. The old code scaled wind/lie terms to a pin distance the ball can't fly (e.g. a 392y tee shot with
@@ -324,8 +333,14 @@ const setPath=(o,p,v)=>{const ks=p.split('.'),last=ks.pop();ks.reduce((a,k)=>a[k
      • surfaces: FAIRWAY still derived from centerline (no schema surfaces yet)
      • deco TREES stay cosmetic, outside the schema model
    Golfer/execution engine NOT touched here — that's the REAL METRICS change. */
-const HOLE={
-  id:'hole_bend', number:1, preferredSide:-1,
+/* LANTERN MAGPIE (0.22.0): holes are now an ARRAY. The single authored hole below is
+   HOLES[0]; everything downstream reads the ACTIVE hole via the `let`-bound derived globals
+   (HOLE/GREEN/PINS/TEE/CENTER/FAIRWAY/BUNKERS/WATER/TREES/OBST), recomputed by loadHole(idx).
+   Per-hole shape that used to be module-global now lives ON the hole: trees, obst, the
+   elevation field (elevFn) and the green surface (greenFn). Authoring a new hole = pushing
+   another object of this shape into HOLES — data on top, no engine change. (SPINE SWAP lineage retained.) */
+const HOLE_BEND={
+  id:'hole_bend', number:1, name:'The Bend', preferredSide:-1,
   tees:[{x:4,y:3,name:'Member',par:4,yardage:410}],
   centerline:[[4,0,20],[3,90,20],[5,160,19],[13,214,17],[24,256,16],[30,312,18],[28,362,20],[27,392,22]]
     .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
@@ -338,26 +353,42 @@ const HOLE={
   hazards:[
     {type:'bunker',x:18,y:240,r:9},{type:'bunker',x:44,y:402,r:8},{type:'bunker',x:-3,y:250,r:7},
     {type:'water',polygon:[[8,366],[15,361],[23,361],[28,367],[28,384],[25,398],[17,402],[9,401],[5,390],[5,375]]}
-  ]
+  ],
+  // cosmetic tree clusters (do not block play) — were the global TREES array
+  trees:[[-30,120],[-34,180],[-31,250],[-28,320],[55,150],[58,230],[56,310],[52,380],[-26,40],[50,60]],
+  obst:null,   // TREE CUT: no in-play tree on this hole
+  // per-hole elevation field (yards) → drives lie slope. PHANTOM SLOPE coeffs, hole-specific.
+  elevFn(x,y){let e=0.5+0.011*y;                              // gentle net rise — green ~+5y (15ft) above the tee
+    e+=-4.4*Math.exp(-(((x-24)**2)/420+((y-262)**2)/2400));   // deep swale at the dogleg corner (the low point)
+    e+= 2.6*Math.exp(-(((x-16)**2)/620+((y-348)**2)/2600));   // false-front climb short of the green
+    e+= 1.3*Math.exp(-(((x+14)**2)/300+((y-150)**2)/2600));   // mound well left of the landing zone
+    e+= 0.9*Math.exp(-(((x+8)**2)/340+((y-90)**2)/2000));     // gentle tee-shot rise
+    return e;},
+  // per-hole green surface height (yd). BOLD GREEN shelves, hole-specific (G = this hole's green).
+  // GREEN_BACK / GREEN_FF tunables (Mae — Course Architect — Links / Dr. Priya — Statistician) now live here.
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct, GREEN_BACK=0.55, GREEN_FF=0.40;
+    let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));      // base tilt toward the water (front-left)
+    z+=GREEN_BACK*Math.exp(-(((y-413)**2)/90));                // broad raised back shelf (back third, full width)
+    z+=GREEN_FF*Math.exp(-(((x-37)**2)/120+((y-390)**2)/40));  // gentle false front short-right (near front-right pin)
+    return z;}
 };
-const COURSE={id:'course_bend',name:'The Bend GC',designerArchetype:'strategic',holes:[HOLE]};
+const HOLES=[HOLE_BEND];                         // LANTERN MAGPIE: the hole array (one authored hole for now)
+let activeHoleIdx=0;
+let HOLE=HOLES[activeHoleIdx];                    // ACTIVE hole — everything below reads this
+const COURSE={id:'course_bend',name:'The Bend GC',designerArchetype:'strategic',holes:HOLES};
 const CONDITIONS={wind:{ang:0,mph:0},firmness:0.5,stimp:HOLE.green.stimp}; // schema home for per-round conditions
 
-/* --- legacy globals, now DERIVED from the model (read-only views) --- */
-const CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
-const GREEN=HOLE.green;                         // renderer reads cx,cy,rx,ry (extra fields harmless)
-const PINS=HOLE.pins;
+/* --- legacy globals, now DERIVED from the ACTIVE hole (let-bound; loadHole() reassigns) --- */
+let CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
+let GREEN=HOLE.green;                            // renderer reads cx,cy,rx,ry (extra fields harmless)
+let PINS=HOLE.pins;
 let pinIdx=0, PIN={...PINS[0]};
 // TRUE BREAK / BOLD GREEN: the green is a SLOPE GRID, not one constant. greenZ(x,y) is the hidden
 // surface height (yd). green.slope is the BASE-TILT SEED (reproduces the old uniform fall); the two
 // tier terms layer a two-tier character on top. ALL tier terms = 0 ⇒ pure base tilt (the feel gate).
-const GREEN_BACK=0.55;   // raised back shelf height (yd) — back third sits up; back pins run downhill to the water. Tunable — Mae (Course Architect — Links) / Dr. Priya (Statistician).
-const GREEN_FF=0.40;     // false-front rise (yd) short-right — repels a weak approach. Tunable.
-function greenZ(x,y){const G=GREEN,a=G.slope.ang,p=G.slope.pct;
-  let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));            // base tilt toward the water (front-left) — feel-gate baseline
-  z+=GREEN_BACK*Math.exp(-(((y-413)**2)/90));                      // BOLD GREEN: broad raised back shelf (back third, full width)
-  z+=GREEN_FF*Math.exp(-(((x-37)**2)/120+((y-390)**2)/40));        // BOLD GREEN: gentle false front short-right (near the front-right pin)
-  return z;}
+// LANTERN MAGPIE: greenZ now delegates to the ACTIVE hole's per-hole surface (HOLE.greenFn).
+// Shelf params (GREEN_BACK/GREEN_FF) moved INTO each hole's greenFn so authoring carries its own.
+function greenZ(x,y){return HOLE.greenFn(x,y,GREEN);}
 function buildGreenGrid(){const G=GREEN,cs=1.0,d=0.5;             // cellSize 1.0 yd (tunable; handoff 0.5–2)
   const ox=G.cx-G.rx, oy=G.cy-G.ry, cols=Math.ceil(G.rx*2/cs), rows=Math.ceil(G.ry*2/cs), grid=[];
   let zmin=1e9, zmax=-1e9;
@@ -382,25 +413,19 @@ function greenSlopeAt(x,y){const G=GREEN; if(!G.slopeGrid)return{pct:G.slope.pct
   return{pct:Math.hypot(gx,gy), dir:Math.atan2(-gy,-gx), gx, gy};}
 let WIND=CONDITIONS.wind;
 const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:6+rnd(17)};CONDITIONS.wind=WIND;};   // GALE FORCE: 4+rnd(15) → 6+rnd(17), range 4–18 → 6–22 mph
-const TEE=HOLE.tees[0];                         // renderer reads x,y (extra fields harmless)
-const BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
-const WATER=HOLE.hazards.find(h=>h.type==='water').polygon;
+let TEE=HOLE.tees[0];                            // renderer reads x,y (extra fields harmless)
+let BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
+let WATER=(HOLE.hazards.find(h=>h.type==='water')||{polygon:[]}).polygon;   // LANTERN MAGPIE: tolerate a water-less hole
 function buildCorridor(){const L=[],R=[];for(let i=0;i<CENTER.length;i++){const[x,y,w]=CENTER[i];
   const a=CENTER[Math.max(0,i-1)],b=CENTER[Math.min(CENTER.length-1,i+1)];
   let dx=b[0]-a[0],dy=b[1]-a[1];const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;const nx=-dy,ny=dx;
   L.push([x+nx*w,y+ny*w]);R.push([x-nx*w,y-ny*w]);}return L.concat(R.reverse());}
-const FAIRWAY=buildCorridor();
-// cosmetic tree clusters (do not block play)
-const TREES=[[-30,120],[-34,180],[-31,250],[-28,320],[55,150],[58,230],[56,310],[52,380],[-26,40],[50,60]];
-// ONE strategic in-play tree guarding the approach (blocks low shots; clear it high or shape around)
-const OBST=null;   // TREE CUT: the in-play tree was removed (it was the invisible obstacle — drawn, then painted over by the fairway fill). treeBlock + render guard on null.
-// course elevation (yards) → drives lie slope. gentle macro + a few undulations
-function elev(x,y){let e=0.5+0.011*y;                            // PHANTOM SLOPE: gentle net rise — green ~+5y (15ft) above the tee
-  e+=-4.4*Math.exp(-(((x-24)**2)/420+((y-262)**2)/2400));        // deep swale at the dogleg corner (the low point)
-  e+= 2.6*Math.exp(-(((x-16)**2)/620+((y-348)**2)/2600));        // false-front climb short of the green
-  e+= 1.3*Math.exp(-(((x+14)**2)/300+((y-150)**2)/2600));        // mound well left of the landing zone
-  e+= 0.9*Math.exp(-(((x+8)**2)/340+((y-90)**2)/2000));          // gentle tee-shot rise
-  return e;}
+let FAIRWAY=buildCorridor();
+// LANTERN MAGPIE: trees / in-play obstacle now come from the ACTIVE hole (were module globals).
+let TREES=HOLE.trees;
+let OBST=HOLE.obst;   // TREE CUT lineage: null on The Bend → nothing blocks; treeBlock + render guard on null.
+// LANTERN MAGPIE: elev now delegates to the ACTIVE hole's per-hole elevation field (HOLE.elevFn).
+function elev(x,y){return HOLE.elevFn(x,y);}
 function courseSlope(x,y){const d=2.5;
   return{gx:(elev(x+d,y)-elev(x-d,y))/(2*d), gy:(elev(x,y+d)-elev(x,y-d))/(2*d)};}
 // lie state captured when the ball comes to rest; along/cross computed live vs aim
@@ -435,11 +460,13 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const rnd=n=>Math.floor(Math.random()*n);
 
 /* ---------- precomputed (stable) decorative detail ---------- */
-const BUNKER_GRAINS=BUNKERS.map(()=>Array.from({length:16},()=>[(Math.random()-.5)*1.4,(Math.random()-.5)*1.1]));
-const RIPPLES=(()=>{const a=[],bx=[Math.min(...WATER.map(p=>p[0])),Math.max(...WATER.map(p=>p[0]))],
+function buildBunkerGrains(){return BUNKERS.map(()=>Array.from({length:16},()=>[(Math.random()-.5)*1.4,(Math.random()-.5)*1.1]));}
+function buildRipples(){if(!WATER.length)return[];const a=[],bx=[Math.min(...WATER.map(p=>p[0])),Math.max(...WATER.map(p=>p[0]))],
   by=[Math.min(...WATER.map(p=>p[1])),Math.max(...WATER.map(p=>p[1]))];
   let guard=0;while(a.length<15&&guard++<400){const x=bx[0]+Math.random()*(bx[1]-bx[0]),y=by[0]+Math.random()*(by[1]-by[0]);
-    if(pip([x,y],WATER))a.push([x,y,1.2+Math.random()*1.6]);}return a;})();
+    if(pip([x,y],WATER))a.push([x,y,1.2+Math.random()*1.6]);}return a;}
+let BUNKER_GRAINS=buildBunkerGrains();
+let RIPPLES=buildRipples();
 
 /* ---------- camera / transform ---------- */
 let T={s:1,ox:0,oy:0};
@@ -1649,6 +1676,32 @@ document.getElementById('newhole').addEventListener('click',()=>{ball={...TEE};l
   flash('Fresh tee shot. Wind: '+WIND.mph+' mph. Tree guards the approach; water fronts the green.');});
 document.getElementById('pin').addEventListener('change',e=>{pinIdx=+e.target.value;PIN={...PINS[pinIdx]};target=null;sync();setView(true);
   flash('Pin moved: '+PINS[pinIdx].name+'.');});
+/* LANTERN MAGPIE: load a hole by index — repoint every active-hole-derived global and rebuild
+   the per-hole caches (corridor, grains, ripples, green slope grid). Pure engine state; no DOM. */
+function loadHole(idx){
+  activeHoleIdx=((idx%HOLES.length)+HOLES.length)%HOLES.length;
+  HOLE=HOLES[activeHoleIdx];
+  CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
+  GREEN=HOLE.green; PINS=HOLE.pins; TEE=HOLE.tees[0];
+  BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
+  WATER=(HOLE.hazards.find(h=>h.type==='water')||{polygon:[]}).polygon;
+  TREES=HOLE.trees||[]; OBST=HOLE.obst||null;
+  FAIRWAY=buildCorridor(); BUNKER_GRAINS=buildBunkerGrains(); RIPPLES=buildRipples();
+  buildGreenGrid(); CONDITIONS.stimp=GREEN.stimp;
+  pinIdx=0; PIN={...PINS[0]};
+}
+/* gotoHole: loadHole + reset the round-ish UI state and repaint (the DOM half). */
+function gotoHole(idx){
+  loadHole(idx);
+  const ps=document.getElementById('pin');
+  ps.innerHTML=PINS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join(''); ps.value='0';
+  ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
+  rollWind();captureLie(TEE.x,TEE.y);resetControls();
+  document.getElementById('log').innerHTML='';document.getElementById('club').value='D';
+  fit();fitLie();fitGreen();sync();render();drawGreenView();setView(false);
+  flash('Hole '+HOLE.number+' · '+(HOLE.name||HOLE.id)+'. Wind: '+WIND.mph+' mph'+(HOLES.length<2?' — only hole authored, wraps to itself.':'.'));
+}
+document.getElementById('nexthole').addEventListener('click',()=>gotoHole(activeHoleIdx+1));
 window.addEventListener("resize",()=>{fit();fitLie();fitGreen();render();drawLie();drawGreenView();});
 
 /* ===================================================================
@@ -1762,8 +1815,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.21.0 — end */
+/* golf-sim 0.22.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.21.0 -->
+<!-- golf-sim 0.22.0 -->
