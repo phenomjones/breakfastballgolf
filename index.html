@@ -1,4 +1,4 @@
-<!-- golf-sim 0.23.0 -->
+<!-- golf-sim 0.30.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,13 +117,13 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.23.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.30.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
           <div><div class="big" id="strokes">0</div><div class="lbl">Strokes</div></div>
           <div><div class="rel" id="rel">E</div><div class="lbl">To Par</div></div>
-          <div style="margin-left:auto;text-align:right"><div class="rel" id="topin">401</div><div class="lbl">Yds to pin</div></div>
+          <div style="margin-left:auto;text-align:right"><div class="rel" id="topin">401</div><div class="lbl">Caddy's read</div></div>
         </div>
       </div>
       <div class="lastshot" id="lastshot" style="display:none"></div>
@@ -139,6 +139,10 @@
       </div>
       <div class="sec"><div id="ybook"></div></div>
       <div class="sec">
+        <div class="sec-t">Course Setup <span style="color:var(--muted);font-size:10px">read-only · this round</span></div>
+        <div id="setupReadout"></div>
+      </div>
+      <div class="sec">
         <div class="sec-t">Scorecard</div>
         <div class="log" id="log"></div>
         <label class="fld" style="margin-top:10px">Pin position</label>
@@ -153,7 +157,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.23.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.30.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -193,6 +197,7 @@
         <label class="fld">Swing</label>
         <div class="pwrow" id="swingrow"><button class="pwbtn" data-p="smooth">Smooth</button><button class="pwbtn on" data-p="stock">Stock</button><button class="pwbtn" data-p="hard">Hard</button></div>
         <button class="hit" id="hit">Hit Shot</button>
+        <button class="reset" id="gimme" style="width:100%;margin-top:8px;display:none">Tap in · concede</button>
         <button class="reset" id="undo" style="width:100%;margin-top:8px">Replay last shot</button>
         <div id="shotdata"></div>
       </div>
@@ -200,7 +205,90 @@
   </div>
 </div>
 <script>
-const VERSION='0.23.0';  /* SemVer.
+const VERSION='0.30.0';  /* SemVer.
+   SETUP READOUT (0.30.0, minor) — read-only course-setup indicator (note 11, option A):
+   • A "Course Setup" card in the LEFT dock surfaces only what's REAL and consumed today:
+     CONDITIONS.firmness (course-wide, 0=soft..1=firm) + per-green CONDITIONS.stimp (set per hole
+     in loadHole). renderSetup() repaints it from sync(); updates as the active green changes.
+   • HONEST LABELS: firmness is flagged course-wide (it's a flat 0.5 everywhere until a real
+     CourseSetup exists); rough height, first cut, green receptivity and per-surface firmness are
+     NOT modeled — the card says so and points at WEATHER STATION (planned). No fabricated numbers.
+   • This is the cheap stopgap; the full per-surface CourseSetup + course-setup-contract.md is the
+     WEATHER STATION item (charter §3). DATA STILL TO AUTHOR before this card means anything beyond
+     a constant: per-surface firmness, rough height, first-cut width, green receptivity.
+   Prev LONG LENS (0.29.0).
+   LONG LENS (0.29.0, minor) — fixes greens cropping off the main canvas on long holes (note 2):
+   • PER-HOLE VIEW BOX: the full-hole overview was a single hardcoded const (FULLBB, maxY 428 = The
+     Bend). loadHole now computes HOLE_BBOX per hole from tee + centerline (±corridor) + green +
+     hazards + blockers (computeHoleBBox); #16 green (cy 452) and #17 green (cy 485) sat BELOW 428
+     and rendered off-screen at tee scale — now framed. The Bend carries an explicit `viewBox` equal
+     to the old FULLBB so the control hole stays byte-stable on (re)load. targetView's overview
+     fallback reads HOLE_BBOX, not FULLBB.
+   • GREEN INSET: on a full shot (shotZone()==='full') the main canvas now draws a bottom-right green
+     closeup (drawGreenInset, ~44yd span, reuses drawGreen) so the green is READABLE even though it's
+     tiny in the wide overview. Hidden on chip/pitch/putt (the main view already frames the green
+     there) and while animating. The dock greenview is unchanged.
+   SCOPE NOTE (honest): the originally-scoped "auto ball->target zoom of the MAIN canvas on aim" was
+   DROPPED by design — the main canvas is the click-to-aim surface (cv click sets target anywhere on
+   the hole); zooming it on aim would make distant re-aims unclickable. The green inset + corrected
+   overview deliver the "see the green on a 455y hole" goal without breaking aiming. The working-area
+   read still lives in the dock (lieview + greenview).
+   Prev DARK TIMBER BATCH (0.28.0).
+   DARK TIMBER BATCH (0.28.0, minor) = TIMBER LINE + PUNCH OUT (note 13):
+   • TIMBER LINE: trees are now in-play obstacles. Per-hole authored `blockers` (lines faithful to
+     the owner's notes: #15 right whole way, #16 right 250-290 + left woods, #17 right 140-255 + left).
+     treeBlock generalized from the single OBST point to loop all blockers (returns the struck tree).
+     Blockers render ON TOP of the fairway — fixing the TREE CUT paint-over bug — with a faint ring
+     marking "in play". Snapshot gains a `blocked` field (partially un-stubs recoveryDifficulty).
+     The Bend + #18 stay blocker-free (control / short par 3).
+   • PUNCH OUT: when a tree blocks the line to the pin, the caddie gives a recovery read — punch out /
+     take your medicine / low-percentage high shot — gated on whether a high ball clears + caddie skill.
+   NOTE: blocker height/radius + recoveryDifficulty are PROVISIONAL (Royce rubric / Dr. Priya tuning).
+   Prev VELVET LEDGER BATCH (0.27.0).
+   VELVET LEDGER BATCH (0.27.0, minor) = FROSTED YARDAGE + SOFT HANDS:
+   • FROSTED YARDAGE (note 9): every reference number is a caddie READ, not an oracle.
+     caddieEstimate(true,dist,elevΔ,cad,tag) = true + a STABLE per-caddie lean scaled by
+     read-difficulty × (1−skill) × familiarity (easy/flat ≈ exact for anyone; long/elevated/blind
+     separate caddies). Applied to the yardage book (pin/front/back/trouble/layups) and the HUD pin
+     chip — relabeled "Caddy to pin"; panel number → "Caddy's read". Per-caddie presentation via
+     voice.numbers (Denny=bare, Marisol=mix of tilde/range); precision tracks uncertainty.
+   • SOFT HANDS (note 6): short shots show a LAND zone (no precise rest dot); a strong short-game
+     caddie also shows an approximate, never-exact RELEASE band toward the pin (width ∝ 1/skill).
+     Caddie gives a "land it X, release ~Y" read; flop/pitch/chip/bump confirmed as the low/high
+     control (hint added). Pre-shot rollout removed; actual rollout still shown post-shot.
+   NOTE: voice.numbers seeds the caddie voice/personality layer → caddie-lens doc note pending.
+   Prev STEADY BREEZE (0.26.0).
+   STEADY BREEZE (0.26.0, minor) — realistic, persistent, drifting wind (note 10):
+   • Magnitude skewed toward moderate (seedWind: mean ~8 mph, mostly 3-12, occasional 15+, rare 20+)
+     instead of uniform 6-22 ("too high too often").
+   • Wind is now a DAY BASELINE that drifts gently (driftWind) per completed stroke (±~1-2 mph, ±~7°)
+     and carries across holes — no more 3->22 lurch within a hole. Drift happens BETWEEN strokes, so
+     the caddie's read and the shot it resolves always share one wind (snapshot stays aligned).
+   • "New attempt" re-seeds a fresh day (its purpose); "Next hole →" drifts (continues the day).
+   • Gust/swirl remain null — that's WEATHER STATION, not this. All constants are Dr. Priya tunables.
+   Prev TARGET TRUTH (0.25.0).
+   TARGET TRUTH (0.25.0, minor) — caddie read goes to the TARGET, not the selected club (note 7):
+   buildSnapshot now feeds the read the UNCAPPED target distance (plan.tgtDist / pin) instead of
+   the club-capped intended. The caddie answers "the pin plays ~X, I'd hit <club>" and recommends a
+   club that reaches, instead of confirming an under-club (the "plays 95y for a 120 shot" bug).
+   Shot RESOLUTION still uses the capped intended (PEWTER OTTER) — advise to the target, resolve the
+   swing. For reachable shots tgtDist==intended so the read is unchanged (regression-safe). Note 5
+   folded in: drawAim now draws a crosshair at the actual AIM point, with a dashed landing→aim link
+   when the selected club is short — "where you clicked" is always visible. NOTE: amends the
+   caddie-lens read-distance contract → caddie-lens doc needs a pointer revision (follow-up).
+   Prev CLEAN SWEEP BATCH (0.24.0).
+   CLEAN SWEEP BATCH (0.24.0, minor) — four review fixes:
+   • SAND BRAKE: sand now arrests roll — a ball whose roll path enters a bunker stops there
+     (was rolling through like fairway).
+   • DIM RELIEF: removed the unreadable relief-cell hillshade from the main render (kept the
+     fall-line arrows); fall-line sampling now uses the per-hole OOB_BOX and SLOPE_FIELD/
+     RELIEF_FIELD are invalidated in loadHole (were cached on The Bend → every hole showed Bend's).
+   • TAP IN: a tap-in is now OFFERED (a 'Tap in · concede' button) instead of auto-conceded; the
+     player presses it (or putts). clearGimme on new shot / new attempt / next hole / replay.
+   • GLASS READER (note 3 only): green closeup draws the greenside bunker BEHIND the green
+     (matches the map; bunker no longer juts into the surface). Note 5 (green-click 'short' = the
+     carry-landing preview) deferred into TARGET TRUTH where the aim/landing semantics change.
+   Prev HICKORY COMET (0.23.0).
    HICKORY COMET (0.23.0, minor — content): appended four authored holes after The Bend —
    Paramount CC 15/16/17/18 (current routing 6-9; old map numbers kept to match the BlueGolf
    flyovers). Faithful plan geometry (centerline/dogleg/bunkers/green/tees), real elevation &
@@ -351,6 +439,7 @@ const setPath=(o,p,v)=>{const ks=p.split('.'),last=ks.pop();ks.reduce((a,k)=>a[k
    another object of this shape into HOLES — data on top, no engine change. (SPINE SWAP lineage retained.) */
 const HOLE_BEND={
   id:'hole_bend', number:1, name:'The Bend', preferredSide:-1, oobBox:{minx:-40,maxx:62,miny:-16,maxy:426}, // GRANITE FERRET: exact original box
+  viewBox:{minX:-42,maxX:64,minY:-18,maxY:428}, // LONG LENS: explicit overview = old hardcoded FULLBB → Bend frame byte-stable
   tees:[{x:4,y:3,name:'Member',par:4,yardage:410}],
   centerline:[[4,0,20],[3,90,20],[5,160,19],[13,214,17],[24,256,16],[30,312,18],[28,362,20],[27,392,22]]
     .map(([x,y,w])=>({x,y,station:y,corridorWidth:w})),
@@ -398,6 +487,7 @@ const HOLE_15={
   ],
   trees:[[34,120],[36,180],[35,240],[34,300],[33,360],[36,400],[-20,40],[-22,110],[-23,180],[-24,250],[-25,320]],
   obst:null,
+  blockers:[{x:34,y:120,r:6,height:16},{x:36,y:180,r:6,height:16},{x:35,y:240,r:6,height:16},{x:34,y:300,r:6,height:16},{x:33,y:360,r:6,height:16},{x:36,y:400,r:6,height:16}],  // TIMBER LINE: right-edge tree line (blocks the whole right side)
   elevFn(x,y){let e=12-0.029*y;
     e+=2.0*Math.exp(-(((y-378)**2)/260));
     return e;},
@@ -426,6 +516,7 @@ const HOLE_16={
   ],
   trees:[[26,250],[28,262],[27,276],[29,290],[-26,240],[-28,300],[-29,360],[-27,410]],
   obst:null,
+  blockers:[{x:26,y:250,r:6,height:16},{x:28,y:262,r:6,height:16},{x:27,y:276,r:6,height:16},{x:29,y:290,r:6,height:16},{x:-26,y:240,r:6,height:16},{x:-28,y:300,r:6,height:16},{x:-29,y:360,r:6,height:16},{x:-27,y:410,r:6,height:16}],  // TIMBER LINE: right 250-290 blocks approach; left woods to ~50y short
   elevFn(x,y){let e=0.5+0.016*y;
     e+=-3.0*Math.exp(-(((y-408)**2)/700));
     e+= 4.5*Math.exp(-(((y-446)**2)/240));
@@ -453,6 +544,7 @@ const HOLE_17={
   ],
   trees:[[24,140],[26,180],[25,220],[27,255],[-24,215],[-26,245],[-25,270]],
   obst:null,
+  blockers:[{x:24,y:140,r:6,height:16},{x:26,y:180,r:6,height:16},{x:25,y:220,r:6,height:16},{x:27,y:255,r:6,height:16},{x:-24,y:215,r:6,height:16},{x:-26,y:245,r:6,height:16},{x:-25,y:270,r:6,height:16}],  // TIMBER LINE: right 140-255 blocks approach; left woods
   elevFn(x,y){let e=0.5+0.018*y;
     e+=3.6*Math.exp(-(((y-248)**2)/3000));
     e+=-2.6*Math.exp(-(((y-286)**2)/700));
@@ -528,7 +620,19 @@ function greenSlopeAt(x,y){const G=GREEN; if(!G.slopeGrid)return{pct:G.slope.pct
   const gy=(A.gy*(1-tx)+B.gy*tx)*(1-ty)+(C.gy*(1-tx)+D.gy*tx)*ty;
   return{pct:Math.hypot(gx,gy), dir:Math.atan2(-gy,-gx), gx, gy};}
 let WIND=CONDITIONS.wind;
-const rollWind=()=>{WIND={ang:Math.random()*Math.PI*2,mph:6+rnd(17)};CONDITIONS.wind=WIND;};   // GALE FORCE: 4+rnd(15) → 6+rnd(17), range 4–18 → 6–22 mph
+let windBaseMph=8, windBaseAng=0;                 // STEADY BREEZE: the day's wind baseline (persists; drifts gently)
+function seedWind(){                               // fresh realistic day (New attempt / load) — skewed toward moderate, not "high too often"
+  windBaseMph=clamp(Math.round(2+Math.abs(gauss())*5+Math.random()*3),1,24);  // mean ~8, mostly 3-12, occasional 15+, rare 20+
+  windBaseAng=Math.random()*Math.PI*2;
+  WIND={ang:windBaseAng,mph:windBaseMph};CONDITIONS.wind=WIND;
+}
+function driftWind(){                               // gentle within-round evolution (per stroke / next hole) — never lurches 3->22
+  windBaseMph=clamp(windBaseMph+gauss()*1.0,1,24);             // baseline wanders slowly through the round
+  windBaseAng+=gauss()*0.06;                                  // ~±3.5° baseline direction drift
+  const mph=clamp(Math.round(windBaseMph+gauss()*1.5),1,Math.round(windBaseMph)+5);  // shot-to-shot gust around the baseline
+  WIND={ang:windBaseAng+gauss()*0.12, mph};CONDITIONS.wind=WIND;   // ~±7° shot-to-shot direction
+}
+const rollWind=seedWind;                           // legacy alias = "fresh wind" (New attempt / init)
 let TEE=HOLE.tees[0];                            // renderer reads x,y (extra fields harmless)
 let BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
 let WATER=(HOLE.hazards.find(h=>h.type==='water')||{polygon:[]}).polygon;   // LANTERN MAGPIE: tolerate a water-less hole
@@ -540,6 +644,7 @@ let FAIRWAY=buildCorridor();
 // LANTERN MAGPIE: trees / in-play obstacle now come from the ACTIVE hole (were module globals).
 let TREES=HOLE.trees;
 let OBST=HOLE.obst;   // TREE CUT lineage: null on The Bend → nothing blocks; treeBlock + render guard on null.
+let BLOCKERS=HOLE.blockers||[];   // TIMBER LINE: per-hole in-play trees (authored blocking lines)
 // LANTERN MAGPIE: elev now delegates to the ACTIVE hole's per-hole elevation field (HOLE.elevFn).
 function elev(x,y){return HOLE.elevFn(x,y);}
 function courseSlope(x,y){const d=2.5;
@@ -586,8 +691,22 @@ let RIPPLES=buildRipples();
 
 /* ---------- camera / transform ---------- */
 let T={s:1,ox:0,oy:0};
-const FULLBB={minX:-42,maxX:64,minY:-18,maxY:428};
+const FULLBB={minX:-42,maxX:64,minY:-18,maxY:428};   // boot default (The Bend); per-hole box is HOLE_BBOX
+let HOLE_BBOX={...FULLBB};                            // LONG LENS: the active hole's overview box (set in loadHole)
 let VIEW={...FULLBB};
+// LONG LENS: compute an overview box that actually contains the whole hole (tee → green), so long
+// holes (#16 green cy 452, #17 cy 485) stop cropping off the bottom of the old hardcoded FULLBB.
+function computeHoleBBox(){
+  const xs=[],ys=[],push=(x,y)=>{xs.push(x);ys.push(y);};
+  (HOLE.tees||[]).forEach(t=>push(t.x,t.y));
+  CENTER.forEach(c=>{const w=(c[2]||0)/2;push(c[0]-w,c[1]);push(c[0]+w,c[1]);});
+  push(GREEN.cx-GREEN.rx,GREEN.cy-GREEN.ry);push(GREEN.cx+GREEN.rx,GREEN.cy+GREEN.ry);
+  BUNKERS.forEach(b=>{push(b.x-b.r,b.y-b.r);push(b.x+b.r,b.y+b.r);});
+  WATER.forEach(p=>push(p[0],p[1]));
+  BLOCKERS.forEach(b=>{push(b.x-b.r,b.y-b.r);push(b.x+b.r,b.y+b.r);});
+  const pad=14;
+  return{minX:Math.min(...xs)-pad,maxX:Math.max(...xs)+pad,minY:Math.min(...ys)-pad,maxY:Math.max(...ys)+pad};
+}
 function recompute(){
   const W=cv.clientWidth,H=cv.clientHeight,pad=22;
   const vw=VIEW.maxX-VIEW.minX, vh=VIEW.maxY-VIEW.minY;
@@ -630,7 +749,7 @@ function targetView(){
     const pad=8;
     return{minX:Math.min(...xs)-pad,maxX:Math.max(...xs)+pad,minY:Math.min(...ys)-pad,maxY:Math.max(...ys)+pad};
   }
-  return{...FULLBB};
+  return{...HOLE_BBOX};
 }
 let camAnim=null;
 function setView(animate){
@@ -649,6 +768,7 @@ function setView(animate){
 let ball={...TEE},lie='tee',strokes=0,target=null,swing='stock';
 let shape='straight',traj='mid',shotType='auto',pace='die';
 let aiming=true,holed=false,lastBall=null,lastLie=null,lastStrokes=0,lastCL=null,anim=null;
+let pendingGimme=null;   // TAP IN: leave distance (ft) when a tap-in is offered but not yet conceded
 let tracer=null; // {pts:[], fade}
 let shotMeta=null; // BRASS YARDAGE: {carry,roll,total,club} of the last ball-flight shot (post-resolve)
 const PAR=4;
@@ -682,14 +802,14 @@ const CADDIES={
     playingYards:0.60, greenReading:0.58, shortGame:0.62, courseManagement:0.60,
     localKnowledge:0.55, leanStrength:1.0,
     disposition:{ playingYards:-1, greenReading:-1, shortGame:1, strategy:0 },
-    voice:{ elev:'yards' } },
+    voice:{ elev:'yards', numbers:'bare' } },
   // elite: high reads, small lean, near-unbiased (faint over-read on tricky greens only).
   // voice: tour-caddie feel, talks in CLUBS ("half a club uphill").
   elite:{ id:'cad_elite', name:'Marisol Vega', tier:'Elite',
     playingYards:0.90, greenReading:0.92, shortGame:0.88, courseManagement:0.90,
     localKnowledge:0.85, leanStrength:0.55,
     disposition:{ playingYards:0, greenReading:1, shortGame:0, strategy:0 },
-    voice:{ elev:'clubs' } }
+    voice:{ elev:'clubs', numbers:'mix' } }
 };
 let caddieKey='competent';                 // UI selector (default: the more-wrong one, so the spread shows on flip)
 const caddie=()=>CADDIES[caddieKey];
@@ -705,12 +825,40 @@ function dial(skill, dir, hardness, familiarity, leanStrength){
   const leanSize=leanStrength*( skillGap*(1-familiarity) + skillGap*(hardness-1) );
   return Math.max(0, 1 + dir*leanSize);
 }
+/* FROSTED YARDAGE: every reference number the caddie gives is a READ, not an oracle. Error ≈
+   read-difficulty × (1−skill) × familiarity, with a STABLE per-caddie lean (a learnable tendency,
+   seeded — not per-frame noise). Easy/flat numbers are near-exact for anyone; long / elevated /
+   over-hazard numbers are where caddies separate. Presentation is per-caddie (voice.numbers). */
+function _hash01(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0)/4294967296;}
+function numErrYds(dist,elevDelta){ return 0.5 + dist*0.02 + Math.abs(elevDelta||0)*0.6; }   // base read difficulty (yds)
+function caddieEstimate(trueVal,dist,elevDelta,cad,tag,skillKey){
+  const skill=cad[skillKey||'playingYards'], fam=cad.localKnowledge*PROVISIONAL_FAMILIARITY;
+  const spread=numErrYds(dist,elevDelta)*(1-skill)*(1.3-0.6*fam);            // yards of read uncertainty
+  const lean=(_hash01(cad.id+'|'+tag+'|'+Math.round(trueVal/8))*2-1)*spread; // stable signed lean (learnable)
+  return { est:trueVal+lean, spread };
+}
+function presentYds(est,spread,style){                                       // per-caddie precision tracks uncertainty
+  const v=Math.round(est), lvl = spread>5?2 : spread>2.5?1 : 0;              // 0 confident · 1 soft · 2 uncertain
+  const range=()=>{const h=Math.max(1,Math.round(spread));return (v-h)+'–'+(v+h);};
+  if(lvl===0) return v+'y';
+  switch(style){
+    case 'bare':  return (lvl>=1?Math.round(v/5)*5:v)+'y';
+    case 'tilde': return '~'+(lvl>=2?Math.round(v/5)*5:v)+'y';
+    case 'range': return range()+'y';
+    case 'mix':   return (lvl>=2?range():'~'+v)+'y';
+    default:      return v+'y';
+  }
+}
+function yEst(trueVal,dist,elevDelta,tag,skillKey){                           // estimate + present for the ACTIVE caddie
+  const cad=caddie(); const {est,spread}=caddieEstimate(trueVal,dist,elevDelta,cad,tag,skillKey);
+  return { txt:presentYds(est,spread,(cad.voice&&cad.voice.numbers)||'bare'), est, spread };
+}
 // rules-based read half of a CaddyTurn. Consumes the SNAPSHOT only.
 // Returns the caddie's ESTIMATED playing yardage (never playsTrue) + per-term estimates,
 // + percentages (wind/lie scale with the shot → club-agnostic; elevation is absolute yards).
 function caddieLensRead(snap, cad){
   const c=snap.components;                                  // signed, +=plays LONGER (REAL terms)
-  const base=snap.playsTrue-(c.windTerm+c.elevTerm+c.lieTerm);  // PEWTER OTTER: attempted-carry base
+  const base=snap.playsTrue-(c.windTerm+c.elevTerm+c.lieTerm);  // TARGET TRUTH: base = target distance (uncapped)
   const courseFam=(snap.courseFamiliarity!=null?snap.courseFamiliarity:PROVISIONAL_FAMILIARITY);
   const fam=cad.localKnowledge*courseFam;                   // §5: familiarity = localKnowledge × courseFamiliarity
   const dPY=cad.disposition.playingYards, dSG=cad.disposition.shortGame;
@@ -834,6 +982,7 @@ function model(plan){
 }
 function resolveShot(){
   if(holed||anim)return;
+  clearGimme();   // TAP IN: taking a shot dismisses any outstanding tap-in offer
   const plan=shotPlan();if(!plan){flash('Click the course to choose a target line first.');return;}
   lastBall={...ball};lastLie=lie;lastStrokes=strokes;lastCL={...currentLie};strokes++;
   if(plan.isPutt){resolvePutt(plan);return;}
@@ -914,6 +1063,12 @@ function resolveShot(){
     ex+=cosA*roll; ey+=sinA*roll;
     ex-=pX*roll*sc*K_CROSS; ey-=pY*roll*sc*K_CROSS;   // drift toward downhill
   }
+  // SAND BRAKE: sand kills roll. If the roll path (land → rest) enters a bunker, the ball stops
+  // there instead of running through. Carry-overs (ball flew past) aren't affected — only the roll.
+  {const lx=land.x, ly=land.y, dx=ex-lx, dy=ey-ly, steps=Math.max(1,Math.ceil(Math.hypot(dx,dy)/1.5));
+   for(let i=1;i<=steps;i++){const sxp=lx+dx*i/steps, syp=ly+dy*i/steps;
+     let stop=false; for(const b of BUNKERS){ if((sxp-b.x)**2+(syp-b.y)**2 <= b.r*b.r){ ex=sxp; ey=syp; stop=true; break; } }
+     if(stop){ note+='Rolled into the sand. '; break; }}}
   // BRASS YARDAGE + RANGE BEACON: record the ball's ACTUAL carry/roll AND the
   // truthful per-shot data the dock table will show. All values are post-resolve,
   // measured from the same `ball`/`land`/`{ex,ey}` the engine just produced.
@@ -941,20 +1096,17 @@ function resolveShot(){
 }
 // returns {x,y} where a too-low shot is stopped by the tree, or null
 function treeBlock(from,to,curve,apex){
-  if(!OBST)return null;   // TREE CUT: no in-play tree → nothing ever blocks
+  if(!BLOCKERS||!BLOCKERS.length)return null;   // TIMBER LINE: no in-play trees → nothing blocks
   const N=24,dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy)||1;
   const px=-dy/len,py=dx/len; // perpendicular (for the curved path)
-  // SABLE COMPASS: a tree only blocks if it is genuinely DOWNRANGE — i.e. ahead of the
-  // ball along the shot line by a real margin. A tree level with or behind the ball
-  // (you're hitting away from it) must never trigger a phantom block.
+  // SABLE COMPASS: a tree only blocks if genuinely DOWNRANGE (ahead of the ball by a real margin).
   const MINDOWN=12; // yards of clearance off the clubface before anything can block
   for(let i=1;i<=N;i++){const f=i/N;
-    const along=f*len;                                // distance downrange to this path point
-    if(along<MINDOWN) continue;                       // skip the launch zone next to the ball
+    const along=f*len; if(along<MINDOWN) continue;
     const bend=Math.sin(f*Math.PI)*curve;             // curved flight path in plan view
     const x=from.x+dx*f+px*bend, y=from.y+dy*f+py*bend;
     const h=apex*Math.sin(f*Math.PI);                 // height at this point
-    if(Math.hypot(x-OBST.x,y-OBST.y)<OBST.r && h<OBST.height) return{x,y};} // collision point on the curved flight path
+    for(const b of BLOCKERS){ if(Math.hypot(x-b.x,y-b.y)<b.r && h<b.height) return{x,y,bx:b.x,by:b.y}; }}
   return null;
 }
 /* ---------- putting: pace-driven auto-aim (AMBER TADPOLE) ---------- */
@@ -1029,9 +1181,9 @@ function resolvePutt(plan){
       const m='Charged it off the green into the water — penalty!';log(m);flash(m);aiming=true;target=null;sync();setView(true);return;}
     ball={x:e[0],y:e[1]};lie=nl;captureLie(e[0],e[1]);
     const leaveFt=Math.hypot(e[0]-PIN.x,e[1]-PIN.y)*3;
-    if(leaveFt<=2){strokes++;log('Tap-in conceded ('+leaveFt.toFixed(1)+' ft).');finishPutt();return;}  // gimme
+    if(leaveFt<=2){offerGimme(leaveFt);return;}  // TAP IN: offer, don't auto-concede
     const m=(leaveFt>5?'Slides '+leaveFt.toFixed(1)+' ft by.':'Cozies to '+leaveFt.toFixed(1)+' ft.');
-    log(m);flash(m);aiming=true;target=null;sync();setView(true);});
+    driftWind();log(m);flash(m);aiming=true;target=null;sync();setView(true);});
 }
 function settle(land,rest,note){            // COPPER FINCH: fly to landing, then roll out to rest
   animateShot(land,rest,()=>finishSettle(rest,note));
@@ -1044,7 +1196,7 @@ function finishSettle(rest,note){
   else{ball={x:lx,y:ly};lie=nl;
     if(nl==='green'){const dyd=Math.hypot(lx-PIN.x,ly-PIN.y);
       if(dyd<0.18){finishPutt();return;}                                   // holed it
-      if(dyd<=0.667){strokes++;log('Tap-in conceded ('+(dyd*3).toFixed(1)+' ft).');finishPutt();return;}}}  // gimme
+      if(dyd<=0.667){captureLie(ball.x,ball.y);offerGimme(dyd*3);return;}}}  // TAP IN: offer, don't auto-concede
   captureLie(ball.x,ball.y);
   // BRASS YARDAGE: prefix the scorecard line with the ball's carry/roll/total; update the Last-shot bar.
   let yds='';
@@ -1055,10 +1207,23 @@ function finishSettle(rest,note){
     showShotData(shotMeta);
   }
   const narr=(note||'')+(extra||commentate(lie));log(yds+narr);flash(narr);
+  driftWind();   // STEADY BREEZE: gentle per-stroke evolution (between shots → read & resolve share one wind)
   aiming=true;target=null;sync();setView(true);
 }
 function backOut(from,to){for(let t=0.95;t>0;t-=0.05){const x=from.x+(to.x-from.x)*t,y=from.y+(to.y-from.y)*t,l=lieAt(x,y);
   if(l!=='water'&&l!=='ob')return{x,y};}return{...from};}
+function clearGimme(){pendingGimme=null;const b=document.getElementById('gimme');if(b)b.style.display='none';}
+function offerGimme(leaveFt){            // TAP IN: ball rests in tap-in range; require a press to concede
+  pendingGimme=leaveFt;
+  const b=document.getElementById('gimme');if(b){b.style.display='block';b.textContent='Tap in · concede ('+leaveFt.toFixed(1)+' ft)';}
+  const m='Tap-in range — '+leaveFt.toFixed(1)+' ft. Press "Tap in" to concede, or putt it.';
+  log(m);flash(m);aiming=true;target=null;sync();setView(true);
+}
+function concedeGimme(){
+  if(pendingGimme==null)return;
+  const ft=pendingGimme;clearGimme();
+  strokes++;log('Tap-in conceded ('+ft.toFixed(1)+' ft).');finishPutt();
+}
 function finishPutt(){holed=true;ball={x:PIN.x,y:PIN.y};lie='hole';
   const rel=strokes-PAR;const nm={'-3':'Albatross!!','-2':'Eagle!','-1':'Birdie!','0':'Par.','1':'Bogey.','2':'Double bogey.'}[rel]||(rel<0?'Great score!':'+'+rel);
   log('Holed out in '+strokes+'. '+nm);flash('In the hole! '+strokes+' strokes — '+nm);sync();render();}
@@ -1123,8 +1288,8 @@ function fadeTracer(){const tr=tracer;if(!tr)return;
                 the plays-like number. */
 let SLOPE_FIELD=null;                       // cached once — terrain is static
 function buildSlopeField(){
-  const pts=[];
-  for(let x=-16;x<=56;x+=24) for(let y=16;y<=412;y+=24){
+  const pts=[], B=OOB_BOX;                                // DIM RELIEF: per-hole bounds (was hardcoded Bend box)
+  for(let x=B.minx;x<=B.maxx;x+=24) for(let y=Math.max(8,B.miny);y<=B.maxy;y+=24){
     const surf=lieAt(x,y);
     if(surf!=='fairway'&&surf!=='rough')continue;        // no green/fringe/water/bunker/ob/tee
     const g=courseSlope(x,y), s=Math.hypot(g.gx,g.gy);
@@ -1224,6 +1389,13 @@ function render(){
   ctx.restore();
   // fairway outline soft
   polyPath(FAIRWAY);ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=3;ctx.stroke();
+  // TIMBER LINE: in-play trees (blockers) render ON TOP of the fairway — the TREE CUT bug was these
+  // being drawn before the fairway fill and painted over. Faint reddish ring marks them as "in play".
+  BLOCKERS.forEach(b=>{const bx=SX(b.x),by=SY(b.y),r=Math.max(6,b.r*T.s);
+    ctx.fillStyle='rgba(0,0,0,.30)';ctx.beginPath();ctx.ellipse(bx+3,by+5,r,r*0.9,0,0,7);ctx.fill();
+    ctx.fillStyle='#0f2e17';ctx.beginPath();ctx.arc(bx,by,r,0,7);ctx.fill();
+    ctx.fillStyle='#1f4e29';ctx.beginPath();ctx.arc(bx-r*0.3,by-r*0.35,r*0.65,0,7);ctx.fill();
+    ctx.strokeStyle='rgba(212,88,47,.45)';ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(bx,by,r+2,0,7);ctx.stroke();});
   // water — depth gradient, sandy shoreline, stable ripple highlights
   const gx=SX(GREEN.cx);
   const wg=ctx.createLinearGradient(gx,SY(402),gx,SY(361));
@@ -1244,7 +1416,7 @@ function render(){
     ctx.fillStyle='rgba(160,135,80,.22)';BUNKER_GRAINS[bi].forEach(([dx,dy])=>{ctx.beginPath();
       ctx.arc(sx+dx*rr,sy+dy*rr,Math.max(1,T.s*0.4),0,7);ctx.fill();});});
   drawGreen(SX,SY,T.s,false);
-  renderRelief();                         // RELIEF SHADE: hole-wide hillshade so elevation/slope reads as 3D
+  // DIM RELIEF: relief-cell hillshade removed (unreadable checkerboard); fall-line arrows kept.
   renderFallLine();                       // SLATE HARBOR: sparse downhill arrows (fairway/rough only)
   // tee box: mown pad + two tee markers (replaces the old flat stripe)
   {const tx=SX(TEE.x),ty=SY(TEE.y),wp=Math.max(14,8*T.s),hp=Math.max(9,5.5*T.s);
@@ -1291,6 +1463,7 @@ function render(){
   // ball
   drawBall(SX,SY,T.s);
   drawWind(W,H);
+  drawGreenInset();        // LONG LENS: readable green closeup on full shots
 }
 function drawWind(W,H){
   const cx=58,cy=H-58,R=30;
@@ -1311,6 +1484,33 @@ function drawWind(W,H){
   ctx.restore();
   ctx.fillStyle='#cfe9ff';ctx.font='700 12px JetBrains Mono';ctx.textAlign='center';
   ctx.fillText(WIND.mph+' mph',cx,cy+R+15);ctx.textAlign='left';
+}
+// LONG LENS: on a full shot the green is tiny/far in the wide overview — draw a readable closeup
+// inset (bottom-right of the main canvas), reusing drawGreen. Hidden on chip/pitch/putt (the main
+// view already frames the green) and while a shot animates. Does NOT touch the dock greenview.
+function drawGreenInset(){
+  if(holed||anim||puttingNow()||shotZone()!=='full')return;
+  const W=cv.clientWidth,H=cv.clientHeight;
+  const boxW=Math.max(110,Math.min(180,W*0.30)),boxH=boxW,m=14,x0=W-boxW-m,y0=H-boxH-m;
+  ctx.save();
+  ctx.fillStyle='rgba(8,16,11,.82)';roundRect(x0-1,y0-1,boxW+2,boxH+2,8);ctx.fill();
+  ctx.strokeStyle='rgba(216,179,76,.5)';ctx.lineWidth=1;ctx.stroke();
+  ctx.beginPath();roundRect(x0,y0,boxW,boxH,7);ctx.clip();
+  ctx.fillStyle='#2a5430';ctx.fillRect(x0,y0,boxW,boxH);
+  const span=44,sc=Math.min(boxW,boxH)/span,gcx=GREEN.cx,gcy=GREEN.cy;
+  const gx=x=>x0+boxW/2+(x-gcx)*sc,gy=y=>y0+boxH/2-(y-gcy)*sc;
+  {const b=BUNKERS[1];if(b){ctx.fillStyle='#e3cf9b';ctx.beginPath();ctx.ellipse(gx(b.x),gy(b.y),b.r*sc,b.r*sc*0.78,0,0,7);ctx.fill();}}
+  drawGreen(gx,gy,sc);                                  // tint + contour + net-fall arrow (general lay)
+  const px=gx(PIN.x),py=gy(PIN.y);                      // pin flag
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px,py-18);ctx.stroke();
+  ctx.fillStyle='#c8362b';ctx.beginPath();ctx.moveTo(px,py-18);ctx.lineTo(px+11,py-15.5);ctx.lineTo(px,py-13);ctx.fill();
+  ctx.fillStyle='#1a1a1a';ctx.beginPath();ctx.arc(px,py,2.6,0,7);ctx.fill();
+  ctx.restore();
+  ctx.save();ctx.font='700 10px Outfit';ctx.textAlign='left';ctx.fillStyle='rgba(216,179,76,.9)';
+  ctx.fillText('GREEN',x0+6,y0+13);
+  ctx.textAlign='right';ctx.fillStyle='rgba(234,242,227,.85)';ctx.font='10px Outfit';
+  ctx.fillText(Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y)*3)+' ft',x0+boxW-6,y0+13);
+  ctx.restore();
 }
 function polyPath(poly){ctx.beginPath();poly.forEach((p,i)=>{const x=SX(p[0]),y=SY(p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();}
 function drawGreen(sx,sy,sc){
@@ -1381,7 +1581,7 @@ function drawAim(sx,sy,sc){
   ctx.strokeStyle=hit?'rgba(212,88,47,.9)':'rgba(217,179,76,.8)';ctx.lineWidth=2;ctx.setLineDash([6,5]);
   ctx.beginPath();ctx.moveTo(sx(ball.x),sy(ball.y));ctx.quadraticCurveTo(sx(c1x),sy(c1y),sx(lp.x),sy(lp.y));ctx.stroke();ctx.setLineDash([]);
   if(hit){
-    const hx=sx(hit.x),hy=sy(hit.y),tx=sx(OBST.x),ty=sy(OBST.y);
+    const hx=sx(hit.x),hy=sy(hit.y),tx=sx(hit.bx),ty=sy(hit.by);
     // leader from the collision point to the tree it struck
     ctx.strokeStyle='rgba(212,88,47,.7)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(tx,ty);ctx.stroke();ctx.setLineDash([]);
@@ -1411,13 +1611,32 @@ function drawAim(sx,sy,sc){
     rex=lp.x+cosA*relY*0.42+Math.cos(gs.dir)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(gs.dir)*relY*0.7;}
   else{const gr={fairway:1,tee:1,rough:0.45,bunker:0.3}[landLie]??0.7;
     const roll=m.carry*(ROLLBASE[cid]||.04)*m.rollF*gr; rex=lp.x+cosA*roll; rey=lp.y+sinA*roll;}
-  ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(sx(rex),sy(rey));ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(sx(rex),sy(rey),3.5,0,7);ctx.fill();
+  if(plan.aroundGreen){
+    // SOFT HANDS: short shots show a LAND zone (the dispersion ellipse above), not a precise rest dot.
+    // A better short-game caddie also shows an APPROXIMATE, never-exact RELEASE band toward the pin —
+    // width shrinks with the caddie's short-game skill.
+    const sg=clamp(caddie().shortGame,0,1);
+    if(sg>0.5){ const n=6, base=Math.hypot(rex-lp.x,rey-lp.y)*(1.15-sg)+1.5;
+      ctx.fillStyle='rgba(123,194,106,.12)';
+      for(let i=1;i<=n;i++){const t=i/n,mx=lp.x+(rex-lp.x)*t,my=lp.y+(rey-lp.y)*t,rr=Math.max(2,(1.4+base*0.45)*sc);
+        ctx.beginPath();ctx.ellipse(sx(mx),sy(my),rr,rr,0,0,7);ctx.fill();} }
+  } else {
+    ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(sx(rex),sy(rey));ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(sx(rex),sy(rey),3.5,0,7);ctx.fill();
+  }
   // distance label
   const lbl=Math.round(plan.tgtDist)+'y'+(plan.capped?' (max '+Math.round(plan.maxCarry)+')':'');
   ctx.font='700 12px JetBrains Mono';const tw=ctx.measureText(lbl).width;
   ctx.fillStyle='rgba(8,16,11,.8)';ctx.fillRect(sx(lp.x)+9,sy(lp.y)-9,tw+10,18);
   ctx.fillStyle=plan.capped?'#e0a24a':'#d9b34c';ctx.fillText(lbl,sx(lp.x)+14,sy(lp.y)+3.5);
+  // TARGET TRUTH / note 5: crosshair at the actual AIM point (where you clicked), so "where I click"
+  // is always visible. When the selected club can't reach, a dashed link shows landing → aim (the shortfall).
+  if(target){const ax=sx(target.x),ay=sy(target.y);
+    if(plan.capped){ctx.strokeStyle='rgba(224,162,74,.5)';ctx.setLineDash([3,4]);ctx.lineWidth=1.2;
+      ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(ax,ay);ctx.stroke();ctx.setLineDash([]);}
+    ctx.strokeStyle='rgba(123,194,106,.9)';ctx.lineWidth=1.6;
+    ctx.beginPath();ctx.arc(ax,ay,6,0,7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ax-9,ay);ctx.lineTo(ax+9,ay);ctx.moveTo(ax,ay-9);ctx.lineTo(ax,ay+9);ctx.stroke();}
 }
 /* zoomed green view for putting */
 let greenCtx=null,greenDPR=1;
@@ -1437,8 +1656,10 @@ function drawGreenView(){
     const span=44, sc=Math.min(W,H)/span, cx=GREEN.cx, cy=GREEN.cy;
     const gx=x=>W/2+(x-cx)*sc, gy=y=>H/2-(y-cy)*sc;
     polyPathFn(WATER,gx,gy);ctx.fillStyle='#3a7cb0';ctx.fill();
+    // GLASS READER: draw the greenside bunker BEFORE the green (matches the map's order →
+    // the green edge sits over the bunker, so it no longer appears to jut into the surface).
+    {const b=BUNKERS[1];if(b){ctx.fillStyle='#e3cf9b';ctx.beginPath();ctx.ellipse(gx(b.x),gy(b.y),b.r*sc,b.r*sc*0.78,0,0,7);ctx.fill();}}
     drawGreen(gx,gy,sc);                              // tint + contours + net-fall arrow, full size
-    const b=BUNKERS[1];ctx.fillStyle='#e3cf9b';ctx.beginPath();ctx.ellipse(gx(b.x),gy(b.y),b.r*sc,b.r*sc*0.78,0,0,7);ctx.fill();
     if(target&&aiming){const plan=shotPlan();if(plan){const d=model(plan),lp=d.land;
       ctx.strokeStyle='rgba(217,179,76,.8)';ctx.setLineDash([5,4]);ctx.lineWidth=1.5;
       ctx.beginPath();ctx.moveTo(gx(ball.x),gy(ball.y));ctx.lineTo(gx(lp.x),gy(lp.y));ctx.stroke();ctx.setLineDash([]);
@@ -1583,37 +1804,41 @@ function renderYardageBook(){
   for(const N of [50,75,100,125,150]){const d=toPin-N; if(d>30) layups.push({N,d});}
   layups.sort((a,b)=>b.d-a.d);  // longest layup (closest to a tee shot) listed first
 
+  const eB=elev(ball.x,ball.y);   // FROSTED YARDAGE: numbers below are the caddie's reads, not raw truth
   let html=`<div class="sec-t">Yardage Book</div>`+
     `<table class="ybook"><tbody>`+
-      `<tr><td>To pin</td><td><b>${Math.round(toPin)}y</b></td></tr>`+
-      `<tr><td>To front</td><td>${Math.round(toFront)}y</td></tr>`+
-      `<tr><td>To back</td><td>${Math.round(toBack)}y</td></tr>`+
+      `<tr><td>To pin</td><td><b>${yEst(toPin,toPin,elev(PIN.x,PIN.y)-eB,'pin').txt}</b></td></tr>`+
+      `<tr><td>To front</td><td>${yEst(toFront,toFront,elev(edges.front.x,edges.front.y)-eB,'front').txt}</td></tr>`+
+      `<tr><td>To back</td><td>${yEst(toBack,toBack,elev(edges.back.x,edges.back.y)-eB,'back').txt}</td></tr>`+
     `</tbody></table>`;
   if(hazards.length){
     html+=`<div class="ybook-sub">Trouble ahead</div><table class="ybook"><tbody>`;
     for(const h of hazards){
+      const cC=_hazardCenter(h), de=elev(cC.x,cC.y)-eB;
       const v = h.clear!=null
-        ? `${Math.round(h.dist)}y · ${Math.round(h.clear)}y clear`
-        : `${Math.round(h.dist)}y`;
+        ? `${yEst(h.dist,h.dist,de,'haz:'+h.label).txt} · ${yEst(h.clear,h.dist,de,'clr:'+h.label).txt} clear`
+        : `${yEst(h.dist,h.dist,de,'haz:'+h.label).txt}`;
       html+=`<tr><td>${h.label}</td><td>${v}</td></tr>`;}
     html+=`</tbody></table>`;}
   if(layups.length){
     html+=`<div class="ybook-sub">Layups</div><table class="ybook"><tbody>`;
-    for(const l of layups) html+=`<tr><td>Leave ${l.N}</td><td>${Math.round(l.d)}y</td></tr>`;
+    for(const l of layups) html+=`<tr><td>Leave ${l.N}</td><td>${yEst(l.d,l.d,0,'lay:'+l.N).txt}</td></tr>`;
     html+=`</tbody></table>`;}
   e.innerHTML=html; e.style.display='block';}
 
 function sync(){
   const toPin=Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y));
+  const onG=(lie==='green'||lie==='fringe');
+  const pinRead=(!holed&&!onG)?yEst(Math.hypot(PIN.x-ball.x,PIN.y-ball.y),Math.hypot(PIN.x-ball.x,PIN.y-ball.y),elev(PIN.x,PIN.y)-elev(ball.x,ball.y),'pin'):null;   // FROSTED YARDAGE
   document.getElementById('strokes').textContent=strokes;
   const rel=strokes-PAR;
   document.getElementById('rel').textContent=holed?(rel===0?'E':(rel>0?'+'+rel:rel)):(strokes?'·':'E');
-  document.getElementById('topin').textContent=holed?'—':toPin;
+  document.getElementById('topin').textContent=holed?'—':(onG?toPin:Math.round(pinRead.est));
   const lieName={tee:'Tee',fairway:'Fairway',rough:'Rough',bunker:'Bunker',green:'Green',fringe:'Fringe',hole:'Holed'}[lie]||lie;
   document.getElementById('lietag').textContent=lieName;
   document.getElementById('hud').innerHTML=
     `<div class="chip"><div class="k">Lie</div><div class="v">${lieName}</div></div>`+
-    `<div class="chip"><div class="k">To Pin</div><div class="v">${holed?'—':(lie==='green'||lie==='fringe'?toPin*3+'ft':toPin+'y')}</div></div>`+
+    `<div class="chip"><div class="k">${onG?'To Pin':'Caddy to pin'}</div><div class="v">${holed?'—':(onG?toPin*3+'ft':pinRead.txt)}</div></div>`+
     `<div class="chip"><div class="k">Stroke</div><div class="v">${('0'+(strokes+1)).slice(-2)}</div></div>`;
   const sel=document.getElementById('club');
   if((lie==='green')&&sel.value!=='P')sel.value='P';
@@ -1640,6 +1865,24 @@ function sync(){
   drawLie();drawGreenView();
   buildBag();
   renderYardageBook();
+  renderSetup();
+}
+// SETUP READOUT (option A): show ONLY real, consumed setup values — course-wide firmness and the
+// active green's stimp. Everything else the note listed (rough, first cut, receptivity, per-surface
+// firmness) is not modeled yet, so the card says so rather than printing a fabricated number.
+function renderSetup(){
+  const el=document.getElementById('setupReadout'); if(!el)return;
+  const f=(CONDITIONS&&CONDITIONS.firmness!=null)?CONDITIONS.firmness:0.5;
+  const fword=f<0.34?'Soft':f<0.67?'Medium':'Firm';
+  const stimp=Math.round((CONDITIONS&&CONDITIONS.stimp!=null)?CONDITIONS.stimp:GREEN.stimp);
+  const sword=stimp<=9?'slow':stimp<=11?'moderate':stimp<=12?'quick':'fast';
+  const row=(k,v)=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 0">`+
+    `<span style="color:var(--muted)">${k}</span><span style="color:var(--txt)">${v}</span></div>`;
+  el.innerHTML =
+    row('Firmness', `${fword} · ${f.toFixed(2)}`)+
+    row('Green speed', `Stimp ${stimp} · ${sword}`)+
+    `<div class="smallnote" style="margin-top:6px">Firmness is course-wide for now. Rough height, first cut, `+
+    `receptivity &amp; per-surface firmness aren't modeled yet — <i>WEATHER STATION (planned)</i>.</div>`;
 }
 function paceNote(pace,sol){
   const pastFt=(sol.want*3).toFixed(1);
@@ -1664,6 +1907,36 @@ function caddieRead(){
     const leaves=['lag','die','charge'].map(p=>`${p[0].toUpperCase()+p.slice(1)} +${(pastTarget(p,D)*3).toFixed(1)}ft`).join(' · ');
     s+=`<br><span style="color:var(--muted);font-size:11px">Pace targets (past the hole): ${leaves}</span>`;
     return s;
+  }
+  // SOFT HANDS: short-game land/release read (caddie estimates) for chip / pitch / flop / bump.
+  const _sp=(typeof shotPlan==='function')?shotPlan():null;
+  if(_sp && _sp.aroundGreen){
+    const cad=caddie(), m=model(_sp);
+    const land=Math.hypot(m.land.x-ball.x,m.land.y-ball.y), rel=Math.max(0,m.agRoll);
+    const landS=yEst(land,land,0,'agland','shortGame').txt, relS=yEst(rel,Math.max(rel,8),0,'agrel','shortGame').txt;
+    const first=cad.name.split(' ')[0];
+    let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
+    s+=`<b style="color:#7bc26a">Short game · ${shotType[0].toUpperCase()+shotType.slice(1)}</b>`;
+    s+=`<br><span style="color:var(--muted)">${first}: “Land it ${landS}, let it release about ${relS}.”</span>`;
+    s+=`<br><span style="color:var(--muted);font-size:11px">flop = high &amp; soft · bump = low &amp; running</span>`;
+    return s;
+  }
+  // PUNCH OUT (TIMBER LINE): recovery read when a tree blocks the straight line to the pin.
+  if(lie!=='green'&&lie!=='fringe'&&BLOCKERS.length){
+    const distPin=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
+    const blk=treeBlock(ball,{x:PIN.x,y:PIN.y},0,distPin*0.14);
+    if(blk){
+      const cad=caddie(), first=cad.name.split(' ')[0];
+      const clearsHigh=!treeBlock(ball,{x:PIN.x,y:PIN.y},0,distPin*0.14*1.6);
+      let advice;
+      if(clearsHigh && cad.shortGame>0.8) advice='you can clear it if you flight one high — tight window, but it’s there';
+      else if(clearsHigh) advice='you might fly a high one over, but it’s a gamble — the safe play is to punch out';
+      else advice='no window at the green — punch out to the fairway and take your medicine';
+      let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
+      s+=`<b style="color:#d4582f">Blocked — trees</b>`;
+      s+=`<br><span style="color:var(--muted)">${first}: “${advice}.”</span>`;
+      return s;
+    }
   }
   // AMBER LYNX + COBALT WREN: lens-distorted ESTIMATE in caddie voice. Snapshot-only; never reads
   // WIND/grid globals or playsTrue. Wind = hurt/help + %; lie = %; elevation = PER-CADDIE unit.
@@ -1761,6 +2034,7 @@ cv.addEventListener('click',e=>{if(holed||anim||puttingNow())return;const r=cv.g
   if(Math.hypot(cx-PIN.x,cy-PIN.y)<2.2){cx=PIN.x;cy=PIN.y;} // snap to pin
   target={x:cx,y:cy};aiming=true;render();drawLie();drawGreenView();});
 document.getElementById('hit').addEventListener('click',resolveShot);
+document.getElementById('gimme').addEventListener('click',concedeGimme);   // TAP IN
 // AMBER LYNX: swap caddie, re-render the read against the current shot (read-only).
 document.getElementById('caddiesel').addEventListener('change',e=>{caddieKey=e.target.value;
   const el=document.getElementById('caddie');if(el)el.innerHTML=caddieRead();});
@@ -1786,8 +2060,8 @@ function resetControls(){shape='straight';traj='mid';shotType='auto';pace='die';
   [['swingrow','stock','p'],['shaperow','straight','sh'],['trajrow','mid','t'],['pacerow','die','pc']].forEach(([r,val,a])=>{
     document.querySelectorAll('#'+r+' .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset[a]===val));});
   document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));swing='stock';}
-document.getElementById('undo').addEventListener('click',()=>{if(lastBall&&!anim){ball={...lastBall};lie=lastLie;strokes=lastStrokes;currentLie=lastCL?{...lastCL}:currentLie;holed=false;target=null;aiming=true;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);sync();setView(true);flash('Replaying last shot.');}});
-document.getElementById('newhole').addEventListener('click',()=>{ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
+document.getElementById('undo').addEventListener('click',()=>{if(lastBall&&!anim){clearGimme();ball={...lastBall};lie=lastLie;strokes=lastStrokes;currentLie=lastCL?{...lastCL}:currentLie;holed=false;target=null;aiming=true;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);sync();setView(true);flash('Replaying last shot.');}});
+document.getElementById('newhole').addEventListener('click',()=>{clearGimme();ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
   rollWind();captureLie(TEE.x,TEE.y);resetControls();document.getElementById('log').innerHTML='';document.getElementById('club').value='D';sync();setView(false);
   flash('Fresh tee shot. Wind: '+WIND.mph+' mph. Tree guards the approach; water fronts the green.');});
 document.getElementById('pin').addEventListener('change',e=>{pinIdx=+e.target.value;PIN={...PINS[pinIdx]};target=null;sync();setView(true);
@@ -1801,19 +2075,21 @@ function loadHole(idx){
   GREEN=HOLE.green; PINS=HOLE.pins; TEE=HOLE.tees[0];
   BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
   WATER=(HOLE.hazards.find(h=>h.type==='water')||{polygon:[]}).polygon;
-  TREES=HOLE.trees||[]; OBST=HOLE.obst||null;
+  TREES=HOLE.trees||[]; OBST=HOLE.obst||null; BLOCKERS=HOLE.blockers||[];
   FAIRWAY=buildCorridor(); BUNKER_GRAINS=buildBunkerGrains(); RIPPLES=buildRipples();
   buildGreenGrid(); CONDITIONS.stimp=GREEN.stimp;
   pinIdx=0; PIN={...PINS[0]};
   OOB_BOX=HOLE.oobBox;
+  SLOPE_FIELD=null; RELIEF_FIELD=null;             // DIM RELIEF: rebuild per-hole (were cached on The Bend)
+  HOLE_BBOX = HOLE.viewBox ? {...HOLE.viewBox} : computeHoleBBox();  // LONG LENS: per-hole overview frame
 }
 /* gotoHole: loadHole + reset the round-ish UI state and repaint (the DOM half). */
 function gotoHole(idx){
   loadHole(idx);
   const ps=document.getElementById('pin');
   ps.innerHTML=PINS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join(''); ps.value='0';
-  ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
-  rollWind();captureLie(TEE.x,TEE.y);resetControls();
+  clearGimme();ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
+  driftWind();captureLie(TEE.x,TEE.y);resetControls();   // STEADY BREEZE: carry the day's wind across holes (drift, don't re-roll)
   document.getElementById('log').innerHTML='';document.getElementById('club').value='D';
   // HICKORY COMET: refresh the on-screen titleplate to the active hole
   {const t=HOLE.tees[0]||{}, ht=document.getElementById('holetitle'), hs=document.getElementById('holesub');
@@ -1835,6 +2111,18 @@ window.addEventListener("resize",()=>{fit();fitLie();fitGreen();render();drawLie
  *   2. hazardsAhead[].severity / recoveryDifficulty — Royce rubric pending.
  *   3. difficulty{} — PROVISIONAL, uncalibrated placeholder shapes (Dr. Priya fits later).
  * =================================================================== */
+// TIMBER LINE: is the straight line to the pin obstructed by in-play trees? (partially un-stubs
+// recoveryDifficulty — Royce's full rubric still pending for severity.)
+function snapBlocked(){
+  if(lie==='green'||lie==='fringe'||!BLOCKERS.length) return null;
+  const distPin=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
+  const blk=treeBlock(ball,{x:PIN.x,y:PIN.y},0,distPin*0.14);
+  if(!blk) return null;
+  const clearsHigh=!treeBlock(ball,{x:PIN.x,y:PIN.y},0,distPin*0.14*1.6);
+  const along=Math.hypot(blk.x-ball.x,blk.y-ball.y);
+  return { by:'trees', at:{x:Math.round(blk.x),y:Math.round(blk.y)}, clearsHigh,
+           recoveryDifficulty:clamp((clearsHigh?0.4:0.8)+(along<60?0.15:0),0,1) };
+}
 function snapHazardsAhead(ang){
   // geometry REAL (carry to near edge + side vs the shot line); severity/recovery STUB.
   const cosA=Math.cos(ang),sinA=Math.sin(ang),pX=Math.cos(ang+Math.PI/2),pY=Math.sin(ang+Math.PI/2);
@@ -1884,13 +2172,13 @@ function buildSnapshot(){
   const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
   const distGeom=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
   let cid=(document.getElementById('club')||{}).value||'7i'; if(cid==='P')cid='7i';
-  // PEWTER OTTER: read the SHOT being hit (attempted carry along the aim line), mirroring
-  // resolveShot's plan — NOT the full geometric distance to a pin you can't fly to. This keeps
-  // the caddie's number aligned with what the ball will actually do (the PLAYS TRUE invariant).
+  // TARGET TRUTH: the READ goes to the TARGET (uncapped distance to the aim point / pin), so the
+  // caddie answers "what does the pin play to + what club" instead of confirming whatever club is
+  // selected. PEWTER OTTER's capped `intended` still governs shot RESOLUTION (resolveShot) — two
+  // different questions: advise to the target, resolve the actual swing.
   const plan=(typeof shotPlan==='function')?shotPlan():null;
   let ptAng=angPin, ptInt=distGeom, ptCid=cid;
-  if(plan && !plan.isPutt){ ptAng=plan.ang; ptInt=plan.intended; ptCid=plan.cid; }
-  else if(lie!=='green'){ ptInt=Math.min(distGeom, carryOf(cid)); }   // no target set: cap to club carry
+  if(plan && !plan.isPutt){ ptAng=plan.ang; ptInt=plan.tgtDist; ptCid=plan.cid; }   // tgtDist (uncapped), not intended
   const pt=(lie==='green')?null:playingTerms(ptAng,ptInt,traj,ptCid);   // no aerial terms on the green
   const gread=snapGreenRead();
   return {
@@ -1901,6 +2189,7 @@ function buildSnapshot(){
     components: pt?{elevTerm:pt.elevTerm,windTerm:pt.windTerm,lieTerm:pt.lieTerm}:{elevTerm:0,windTerm:0,lieTerm:0},
     preferredSide:HOLE.preferredSide,
     hazardsAhead:snapHazardsAhead(angAim),
+    blocked:snapBlocked(),                                  // TIMBER LINE: trees on the line to the pin
     layups:snapLayups(distGeom),
     greenRead:gread,
     conditions:{wind:{ang:WIND.ang,mph:WIND.mph,gust:null,swirl:null}, firmness:effectiveFirmness, stimp:GREEN.stimp},
@@ -1936,8 +2225,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.23.0 — end */
+/* golf-sim 0.30.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.23.0 -->
+<!-- golf-sim 0.30.0 -->
