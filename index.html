@@ -1,4 +1,4 @@
-<!-- golf-sim 0.33.0 -->
+<!-- golf-sim 0.34.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.33.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.34.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -158,7 +158,8 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.33.0</span></div></div>
+    <button id="zoomtoggle" style="position:absolute;top:12px;right:14px;z-index:6;background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.5);color:var(--gold-lt);font:600 11px Outfit;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer">&#8854; zoom out</button>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.34.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -206,7 +207,26 @@
   </div>
 </div>
 <script>
-const VERSION='0.33.0';  /* SemVer.
+const VERSION='0.34.0';  /* SemVer.
+   FULL SWEEP BATCH (0.34.0, minor) = DRY GREENS + LIE LEGAL + REAL CADDIE + FORWARD FRAME.
+   DRY GREENS (bug) — water polygons on Saxon 2 & 8 were drawn through the green; lieAt checks water
+     BEFORE green, so part of the putting surface read as 'water' → putts there = penalty loop. Moved
+     both off the surface (2: front-left pond, right edge x<=-22; 8: left lake recedes to x<=-37 in the
+     green band), nudged hole-2 front pin onto dry green. Intent (front-left water on 2, left lake on 8)
+     intact. Harness now asserts no green samples as water.
+   LIE LEGAL (bug) — CLUB COVER now picks only clubs PLAYABLE from the lie: Driver tee-only, no Driver
+     or fairway woods from sand. Fixes "Driver from the bunker." Shortest legal club that reaches, else
+     the longest legal → reaches=false → advance read.
+   REAL CADDIE (feature, B) — the one-line "I'd go X" replaced by a structured, voiced pre-shot read:
+     situation (lie+number) · verdict (play/advance) · club + why · reaction to your dialed shape/traj/
+     swing · where to miss. Composed from snapshot facts (Kit) so the LLM later speaks the same skeleton.
+     Voice: Elite (Marisol) thorough; Competent (Denny) blunt but never a one-liner. CANT REACH folds in
+     as the advance verdict and now also fires from recovery lies (sand/rough) regardless of aim.
+   FORWARD FRAME (feature) — after a full shot, hold the wide overview ~5s (FWD_HOLD_MS) so you see the
+     ball land, then auto-zoom to the REMAINING shot (ball→green, played part cut). On-canvas zoom toggle
+     flips forward<->overview; any aim/hit/toggle cancels the pending auto-zoom. New viewMode state;
+     targetView's overview fallback honors it.
+   Prev FRONT NINE (0.33.0).
    FRONT NINE (0.33.0, minor) — new course: "Saxon Glen" out nine (Strategic, Devon-authored; penal
    teeth on 4 & 8; links redan at 6). Par 36, 3,650 yds: P4 415 / P5 560 / P3 205 / P4 470 / P4 340 /
    P3 160 / P5 600 / P4 455 / P4 445. Nine new Hole objects (HOLE_S1..S9) with centerline, green
@@ -648,10 +668,10 @@ const HOLE_S2={
   id:'hole_s2', number:2, name:'Saxon Glen 2 \u00b7 Par 5', preferredSide:-1, oobBox:{minx:-55,maxx:48,miny:-15,maxy:576},
   tees:[{x:0,y:4,name:'Championship',par:5,yardage:560}],
   centerline:_cl([[0,4,21],[3,140,20],[7,270,19],[3,390,18],[-3,475,17],[-8,553,16]]),
-  pins:[{x:-12,y:549,name:'Front (water)',tier:1,difficulty:0.7,guardedBy:['water']},{x:-8,y:556,name:'Center',tier:0,difficulty:0.5,guardedBy:[]},{x:-4,y:563,name:'Back',tier:0,difficulty:0.5,guardedBy:[]}],
+  pins:[{x:-11,y:549,name:'Front-left (water short)',tier:1,difficulty:0.7,guardedBy:['water']},{x:-8,y:556,name:'Center',tier:0,difficulty:0.5,guardedBy:[]},{x:-4,y:563,name:'Back',tier:0,difficulty:0.5,guardedBy:[]}],
   green:{cx:-8,cy:556,rx:12,ry:15,stimp:11,slope:{ang:Math.atan2(8,-6),pct:0.035}},
   hazards:[{type:'bunker',x:10,y:250,r:8},{type:'bunker',x:16,y:275,r:8},{type:'bunker',x:22,y:300,r:8},{type:'bunker',x:2,y:556,r:7},
-    {type:'water',polygon:[[-22,540],[-14,538],[-8,542],[-6,552],[-10,562],[-20,562],[-24,552]]}],
+    {type:'water',polygon:[[-22,548],[-26,552],[-34,548],[-36,534],[-32,524],[-24,524],[-22,530]]}],   // DRY GREENS: front-left pond, short of & left of the green (right edge x<=-22, green left edge -20) — no longer overlaps the surface
   trees:[[28,160],[30,260],[-30,200],[-32,320]], obst:null,
   elevFn(x,y){return 2-0.004*y;},
   greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
@@ -727,7 +747,7 @@ const HOLE_S8={
   pins:[{x:-22,y:445,name:'Front',tier:0,difficulty:0.6,guardedBy:['water']},{x:-24,y:452,name:'Center',tier:0,difficulty:0.65,guardedBy:['water']},{x:-26,y:459,name:'Back (water)',tier:1,difficulty:0.85,guardedBy:['water']}],
   green:{cx:-24,cy:452,rx:11,ry:14,stimp:12,slope:{ang:Math.atan2(-8,5),pct:0.035}},
   hazards:[{type:'bunker',x:-12,y:452,r:8},
-    {type:'water',polygon:[[-26,70],[-30,70],[-34,150],[-36,300],[-34,455],[-26,455]]}],
+    {type:'water',polygon:[[-26,80],[-28,200],[-32,360],[-37,430],[-38,470],[-46,470],[-44,360],[-42,200],[-40,80]]}],   // DRY GREENS: left lake recedes to x<=-37 through the green band (green left edge -35) — hugs the hole without eating the surface
   trees:[[18,140],[20,260],[22,380]], obst:null,
   elevFn(x,y){return 0.5+0.004*y;},
   greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
@@ -915,7 +935,7 @@ function targetView(){
     const pad=8;
     return{minX:Math.min(...xs)-pad,maxX:Math.max(...xs)+pad,minY:Math.min(...ys)-pad,maxY:Math.max(...ys)+pad};
   }
-  return{...HOLE_BBOX};
+  return viewMode==='overview' ? {...HOLE_BBOX} : forwardFrame();   // FORWARD FRAME
 }
 let camAnim=null;
 function setView(animate){
@@ -929,6 +949,26 @@ function setView(animate){
     recompute();render();if(k<1)requestAnimationFrame(step);else camAnim=null;}
   requestAnimationFrame(step);
 }
+// FORWARD FRAME: after a shot, frame the REMAINING shot (ball→green), cutting the played part. Hold
+// the wide overview briefly so you see the ball land in context, then auto-zoom in. Manual toggle
+// flips forward⟷overview anytime; any aim/hit/toggle cancels the pending auto-zoom.
+let viewMode='forward';   // 'forward' = remaining shot · 'overview' = whole hole
+let fwdTimer=null;
+const FWD_HOLD_MS=5000;   // wide-hold before the auto-zoom (tunable)
+function forwardFrame(){
+  const xs=[ball.x,PIN.x,GREEN.cx-GREEN.rx,GREEN.cx+GREEN.rx],
+        ys=[ball.y,PIN.y,GREEN.cy-GREEN.ry,GREEN.cy+GREEN.ry];
+  const padX=22,padY=16;   // lateral corridor margin so the next aim still has room
+  return{minX:Math.min(...xs)-padX,maxX:Math.max(...xs)+padX,minY:Math.min(...ys)-padY,maxY:Math.max(...ys)+padY};
+}
+function cancelForwardZoom(){ if(fwdTimer){clearTimeout(fwdTimer);fwdTimer=null;} }
+function scheduleForwardZoom(){
+  cancelForwardZoom();
+  viewMode='overview'; setView(true); updateZoomBtn();                 // show the ball land in context
+  fwdTimer=setTimeout(()=>{ fwdTimer=null; viewMode='forward'; setView(true); updateZoomBtn(); }, FWD_HOLD_MS);
+}
+function toggleZoom(){ cancelForwardZoom(); viewMode=(viewMode==='overview'?'forward':'overview'); setView(true); updateZoomBtn(); }
+function updateZoomBtn(){ const b=document.getElementById('zoomtoggle'); if(b) b.textContent=(viewMode==='overview'?'⊕ zoom in':'⊖ zoom out'); }
 
 /* ---------- state ---------- */
 let ball={...TEE},lie='tee',strokes=0,target=null,swing='stock';
@@ -1041,19 +1081,21 @@ function caddieLensRead(snap, cad){
   // confidence: difficulty × (1−skill) on the read axes (provisional, uncalibrated).
   const d=snap.difficulty, gPY=1-cad.playingYards, gSG=1-cad.shortGame;
   const conf=clamp(1-((d.wind||0)*gPY+(d.elevation||0)*gPY+(d.lie||0)*gSG), 0.2, 0.99);
-  // CLUB COVER: club to COVER the number from THIS lie — not the closest nominal carry. baseCarry is
-  // the clean-lie carry; scale by the CURRENT lie + swing (same factors resolution uses, option A) so
-  // the pick matches what the club will actually do now. Shortest club whose adjusted carry reaches
-  // estPlays; if none reaches, the longest (a "won't get there" read line is a separate change).
+  // CLUB COVER + LIE LEGAL: club to COVER the number from THIS lie, restricted to clubs you can
+  // actually PLAY from the lie. Driver is tee-only (no driver off the deck); fairway woods aren't
+  // playable from sand. baseCarry × current lie × swing (option A); shortest LEGAL club that reaches
+  // estPlays, else the longest LEGAL club (→ an advance read when even that can't reach — CANT REACH).
   const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
   const _swF=(swing==='smooth'?0.93:swing==='hard'?1.06:1.0);
   const _eff=b=>b.baseCarry*_lieF*_swF;
+  const _legal=cid => cid==='D' ? lie==='tee' : ((cid==='3W'||cid==='5W') ? lie!=='bunker' : true);
+  let _pool=snap.bag.filter(b=>_legal(b.club)); if(!_pool.length)_pool=snap.bag;   // safety: irons are always legal
   let rec=null;
-  for(const b of snap.bag){ if(_eff(b)>=estPlays && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest that reaches
-  if(rec===null){ rec=snap.bag[0]; for(const b of snap.bag){ if(b.baseCarry>rec.baseCarry) rec=b; } }    // nothing reaches → longest
+  for(const b of _pool){ if(_eff(b)>=estPlays && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest legal that reaches
+  if(rec===null){ rec=_pool[0]; for(const b of _pool){ if(b.baseCarry>rec.baseCarry) rec=b; } }        // nothing reaches → longest legal
   return { estPlays, base, estWind, estElev, estLie, windPct, liePct, elevPct,
            confidence:conf, recClub:rec.club, recCarry:rec.baseCarry,
-           reaches:_eff(rec)>=estPlays, recEff:_eff(rec) };   // CANT REACH: does the chosen club cover the number?
+           reaches:_eff(rec)>=estPlays, recEff:_eff(rec) };   // reaches=false → advance (REAL CADDIE / CANT REACH)
 }
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
@@ -1159,6 +1201,7 @@ function model(plan){
 }
 function resolveShot(){
   if(holed||anim)return;
+  cancelForwardZoom();   // FORWARD FRAME: a new shot cancels the pending hold-then-zoom
   clearGimme();   // TAP IN: taking a shot dismisses any outstanding tap-in offer
   const plan=shotPlan();if(!plan){flash('Click the course to choose a target line first.');return;}
   lastBall={...ball};lastLie=lie;lastStrokes=strokes;lastCL={...currentLie};strokes++;
@@ -1398,7 +1441,7 @@ function finishSettle(rest,note){
   }
   const narr=(note||'')+(extra||commentate(lie));log(yds+narr);flash(narr);
   driftWind();   // STEADY BREEZE: gentle per-stroke evolution (between shots → read & resolve share one wind)
-  aiming=true;target=null;sync();setView(true);
+  aiming=true;target=null;sync();scheduleForwardZoom();   // FORWARD FRAME: hold wide, then zoom to what's left
 }
 function backOut(from,to){for(let t=0.95;t>0;t-=0.05){const x=from.x+(to.x-from.x)*t,y=from.y+(to.y-from.y)*t,l=lieAt(x,y);
   if(l!=='water'&&l!=='ob')return{x,y};}return{...from};}
@@ -2159,21 +2202,53 @@ function caddieRead(){
   if(body)body=body.charAt(0).toUpperCase()+body.slice(1);     // sentence-case the quote
   const confPct=Math.round(r.confidence*100);
   const confTag = r.confidence<0.55 ? `<span style="color:#c98b5a">not fully sure (${confPct}%) — tricky read</span>` : `confidence ${confPct}%`;
+  // REAL CADDIE: a structured, voiced pre-shot read — situation · verdict · club + why · reaction to
+  // your dialed shot · where to miss. Composed from snapshot facts (Kit's grounding rule) so the LLM
+  // can later speak the same skeleton. Voice per caddie: Elite = thorough; Competent = blunt but never
+  // a one-liner. Replaces the old one-line "I'd go X". CANT REACH folds in as the advance verdict.
   let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
-  // CANT REACH: when no club covers the number FROM THIS LIE and the player is actually going for the
-  // green (explicit target near the green — not a fresh tee defaulting its aim at the pin, and not a
-  // fairway lay-up spot they can already reach), the caddie flips to an advance/lay-up read instead of
-  // naming a club that falls short. Mirror of PUNCH OUT. Gate avoids false "lay up" on long tee shots.
+  const thorough = cad.tier==='Elite';
+  const cap = t => t ? t.charAt(0).toUpperCase()+t.slice(1) : t;
+  const lieSit = ({tee:'off the tee',fairway:'from the fairway',rough:'out of the rough',bunker:'in the sand',fringe:'just off the green'})[lie] || ('from the '+lie);
+  const recovery = (lie==='bunker'||lie==='rough');
+  const effY=Math.round(r.recEff), leaves=Math.max(0,Math.round(r.estPlays-r.recEff));
+  const why = body ? body.replace(/\.\s*$/,'').replace(/^./,c=>c.toLowerCase()) : '';
+  const reaction = (()=>{ const into=r.windPct>4, down=r.windPct<-4;
+    if(recovery && traj==='high') return 'a high one '+lieSit+' is dicey — catch it clean';
+    if(recovery && swing==='hard') return 'easy through it — a hard swing grabs the '+lie;
+    if(into && (traj==='low'||traj==='punch')) return 'keeping it down into this wind is the play';
+    if(into && traj==='high') return 'a high ball balloons into this wind — I would flight it down';
+    if(down && traj==='high') return 'that high one will ride the wind';
+    if(shape==='fade') return 'working the fade in';
+    if(shape==='draw') return 'turning the draw in';
+    if(swing==='smooth') return 'nice and smooth';
+    return ''; })();
+  const guards = (PIN.guardedBy||[]);
+  const miss = guards.includes('water') ? 'whatever you do, not toward the water'
+             : guards.includes('bunker') ? 'miss away from the bunker, not at the flag'
+             : 'favor the fat of the green';
   const aimNearGreen = !!target && Math.hypot(target.x-GREEN.cx, target.y-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+28;
-  if(!r.reaches && aimNearGreen){
-    const eff=Math.round(r.recEff), leaves=Math.max(0,Math.round(r.estPlays-r.recEff));
-    s+=`<b style="color:#d4582f">Can't reach — ~${est}y</b>`;
-    s+=`<br><span style="color:var(--muted)">${first}: “${body}Nothing covers this from here — ${lbl} is the most I've got, about ${eff}y. Advance it${leaves?`, leaves ~${leaves}y`:''}, then wedge close.”</span>`;
+  if(!r.reaches && (recovery || aimNearGreen)){
+    s+=`<b style="color:#d4582f">${recovery?'Recovery':'Two-shotter'} · ~${est}y</b>`;
+    let q;
+    if(recovery){
+      q = `You're ${lieSit}, ${est} to the flag — no chance of getting home. ${lbl}, catch it clean and advance`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.';
+      q += thorough ? (' '+cap(miss)+`. Don't get greedy.`) : ' Keep it simple.';
+    } else {
+      q = `That's ${est} ${lieSit} — you won't get there in one. ${lbl} is all I've got, about ${effY}`+(leaves?`, leaves ~${leaves}`:'')+'.';
+      q += thorough ? ' Move it down there and wedge close.' : ' Just advance it.';
+    }
+    s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
     s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
     return s;
   }
   s+=`<b style="color:#7bc26a">Plays ~${est}y</b>`;
-  s+=`<br><span style="color:var(--muted)">${first}: “${body}I’d go ${lbl}.”</span>`;
+  let q = `You're ${lieSit}, playing about ${est}.`;
+  q += (thorough && why) ? ` I'd go ${lbl} — ${why}.` : ` ${lbl}.`;
+  if(reaction) q += ' '+cap(reaction)+'.';
+  else if(!thorough) q += ' '+cap(miss)+'.';
+  if(thorough) q += ' '+cap(miss)+'.';
+  s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
   s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
   return s;
 }
@@ -2239,9 +2314,11 @@ function showShotData(m){const e=document.getElementById('shotdata');if(!e)retur
 cv.addEventListener('click',e=>{if(holed||anim||puttingNow())return;const r=cv.getBoundingClientRect();
   let cx=X2C(e.clientX-r.left),cy=Y2C(e.clientY-r.top);
   if(Math.hypot(cx-PIN.x,cy-PIN.y)<2.2){cx=PIN.x;cy=PIN.y;} // snap to pin
+  cancelForwardZoom();   // FORWARD FRAME: don't yank the view out from under an aim
   target={x:cx,y:cy};aiming=true;render();drawLie();drawGreenView();});
 document.getElementById('hit').addEventListener('click',resolveShot);
 document.getElementById('gimme').addEventListener('click',concedeGimme);   // TAP IN
+document.getElementById('zoomtoggle').addEventListener('click',toggleZoom);   // FORWARD FRAME
 // AMBER LYNX: swap caddie, re-render the read against the current shot (read-only).
 document.getElementById('caddiesel').addEventListener('change',e=>{caddieKey=e.target.value;
   const el=document.getElementById('caddie');if(el)el.innerHTML=caddieRead();});
@@ -2304,7 +2381,8 @@ function gotoHole(idx){
   {const t=HOLE.tees[0]||{}, ht=document.getElementById('holetitle'), hs=document.getElementById('holesub');
    if(ht)ht.textContent='Hole '+HOLE.number+' · Par '+(t.par||'');
    if(hs)hs.textContent=(HOLE.name||HOLE.id)+(t.yardage?' · '+t.yardage+' yds':'');}
-  fit();fitLie();fitGreen();sync();render();drawGreenView();setView(false);
+  cancelForwardZoom(); viewMode='forward';   // FORWARD FRAME: fresh hole
+  fit();fitLie();fitGreen();sync();render();drawGreenView();setView(false);updateZoomBtn();
   if(typeof renderScorecard==='function'){renderScorecard();updateRoundControls();}
   flash('Hole '+HOLE.number+' · '+(HOLE.name||HOLE.id)+'. Wind: '+WIND.mph+' mph'+(HOLES.length<2?' — only hole authored, wraps to itself.':'.'));
 }
@@ -2518,8 +2596,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.33.0 — end */
+/* golf-sim 0.34.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.33.0 -->
+<!-- golf-sim 0.34.0 -->
