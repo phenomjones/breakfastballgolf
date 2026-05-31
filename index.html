@@ -1,4 +1,4 @@
-<!-- golf-sim 0.31.0 -->
+<!-- golf-sim 0.33.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.31.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.33.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -144,6 +144,7 @@
       </div>
       <div class="sec">
         <div class="sec-t">Scorecard</div>
+        <div id="scorecard"></div>
         <div class="log" id="log"></div>
         <label class="fld" style="margin-top:10px">Pin position</label>
         <select id="pin"></select>
@@ -157,7 +158,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.31.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.33.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -205,7 +206,34 @@
   </div>
 </div>
 <script>
-const VERSION='0.31.0';  /* SemVer.
+const VERSION='0.33.0';  /* SemVer.
+   FRONT NINE (0.33.0, minor) — new course: "Saxon Glen" out nine (Strategic, Devon-authored; penal
+   teeth on 4 & 8; links redan at 6). Par 36, 3,650 yds: P4 415 / P5 560 / P3 205 / P4 470 / P4 340 /
+   P3 160 / P5 600 / P4 455 / P4 445. Nine new Hole objects (HOLE_S1..S9) with centerline, green
+   (slope/stimp), pins, tee+par+yardage, hazards (bunkers + water; creek crossing on 7, lakeside on 8),
+   in-play trees on 5 & 7, per-hole oobBox/elevFn/greenFn/notes; per-hole viewBox omitted so LONG LENS
+   computeHoleBBox frames each. ROUND_ROUTING → [1..9]; boot opens on Saxon 1. The Bend stays HOLES[0]
+   as the byte-stable anchor; Paramount (HOLE_15..18) retired (still defined, unreferenced). Geometry
+   is illustrative/uncalibrated — playtest will tune yardages, hazard placement, green character.
+   Prev OPENING LOOP BATCH (0.32.0).
+   OPENING LOOP BATCH (0.32.0, minor) = ROUND ONE + SHOT LEDGER — Lever B, first slice: a playable round.
+   ROUND ONE — a single in-memory round over the 4 authored Paramount holes (15/16/17/18). `ROUND` is a
+     plain serializable object shaped like entities.ts Round (`scores:HoleScore[]`, `pinSelection[]`,
+     `status`, plus `shots[]` for the ledger). Hole-out (finishPutt) records a HoleScore; the Next-hole
+     button advances the round WITHOUT wiping the score (advanceRound), finishing with a round summary
+     (finishRound). gotoHole forks: round-advance preserves ROUND + drifts wind; the Bend (HOLES[0]) is
+     left OUT of the round as the byte-stable sandbox/regression anchor (direct loadHole only). New
+     accumulating scorecard panel (hole/par/score/running ±, current hole highlit, Thru/± hero) above
+     the shot log. Boots into a round on Paramount 15. ALSO fixes a latent bug: `PAR` was `const 4` —
+     every hole scored as par 4, mis-scoring P17 (par 5) and P18 (par 3); now per-hole from loadHole.
+   SHOT LEDGER — every struck stroke now appends a schema-shaped `ShotResult` to `ROUND.shots` and links
+     `shotIds` into the hole: full shots (club/shape/traj/effort, intendedTarget, rest, actualCarry,
+     offline, start/restLie, holed, components) at finishSettle; putts (club P, holed, from/rest) at the
+     putt-settle callback; conceded tap-ins too. No SG derived yet — this is the raw stream the stats
+     will be queried from (Dr. Priya). shotIds count = struck shots; HoleScore.strokes is authoritative
+     (includes water/OB penalty strokes, which aren't separate ShotResults).
+   DEFERRED (per scope): AI field, cut, leaderboard, persistence/IndexedDB, career, 18 holes.
+   Prev CANT REACH (0.31.0).
    CANT REACH (0.31.0, minor) — caddie "you can't get there" advance/lay-up read:
    the companion to CLUB COVER. When NO club's lie+swing-adjusted carry covers the estimate AND the
    player is actually going for the green (explicit target within ~the green, so it never fires on a
@@ -598,7 +626,126 @@ const HOLE_18={
     return z;},
   notes:`Tillinghast's reef concept, its an uphill par 3 with a bunker that catches everything short straight or short right. short left is ok but long left not. long straight gets you possibly in a bunker in back of green. It usually plays about 190 so its a long uphill par 3. Theres about 15 yards until danger left, right and long, but long left is probably the bad miss. Green goes back to front. front goes left to right and back goes right to left. surprisingly fast green. Green ~35yd deep, irregular oval. Dominant back-to-front; localized inward-draining pockets back-left (30-33yd) and left-center (15-25yd); right side (18-30yd) steeper feeding forward; front (3-15yd) strengthening toward the front edge.`
 };
-const HOLES=[HOLE_BEND, HOLE_15, HOLE_16, HOLE_17, HOLE_18];   // HICKORY COMET: The Bend (control) + Paramount 15-18 (current 6-9)
+/* ===================================================================
+ * FRONT NINE — "Saxon Glen" out nine. Strategic (Devon-authored), penal teeth on 4 & 8, a links
+ * redan at 6. Par 36, 3,650 yds. Coords: tee at low y, green near y≈yardage, +x right / −x left.
+ * The Bend (HOLES[0]) stays the byte-stable anchor; Paramount (HOLE_15..18) defined above but retired.
+ * =================================================================== */
+const _cl=a=>a.map(([x,y,w])=>({x,y,station:y,corridorWidth:w}));
+const HOLE_S1={
+  id:'hole_s1', number:1, name:'Saxon Glen 1 \u00b7 Par 4', preferredSide:1, oobBox:{minx:-40,maxx:55,miny:-15,maxy:430},
+  tees:[{x:0,y:4,name:'Championship',par:4,yardage:415}],
+  centerline:_cl([[0,4,20],[2,120,20],[6,240,19],[12,340,18],[16,408,18]]),
+  pins:[{x:16,y:402,name:'Front',tier:0,difficulty:0.4,guardedBy:[]},{x:18,y:410,name:'Center',tier:0,difficulty:0.45,guardedBy:[]},{x:22,y:417,name:'Back-right',tier:1,difficulty:0.6,guardedBy:['bunker']}],
+  green:{cx:18,cy:410,rx:12,ry:15,stimp:11,slope:{ang:Math.atan2(-10,-4),pct:0.03}},
+  hazards:[{type:'bunker',x:28,y:255,r:9},{type:'bunker',x:-14,y:265,r:7},{type:'bunker',x:34,y:408,r:8}],
+  trees:[[-30,150],[-32,240],[-30,330],[48,180],[50,300]], obst:null,
+  elevFn(x,y){return 0.5+0.006*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));z+=0.35*Math.exp(-(((y-416)**2)/80));return z;},
+  notes:`Gentle opener. Wide fairway, a single bunker right at ~255 defines the aggressive line; receptive green with a soft back shelf. Ease into the round.`
+};
+const HOLE_S2={
+  id:'hole_s2', number:2, name:'Saxon Glen 2 \u00b7 Par 5', preferredSide:-1, oobBox:{minx:-55,maxx:48,miny:-15,maxy:576},
+  tees:[{x:0,y:4,name:'Championship',par:5,yardage:560}],
+  centerline:_cl([[0,4,21],[3,140,20],[7,270,19],[3,390,18],[-3,475,17],[-8,553,16]]),
+  pins:[{x:-12,y:549,name:'Front (water)',tier:1,difficulty:0.7,guardedBy:['water']},{x:-8,y:556,name:'Center',tier:0,difficulty:0.5,guardedBy:[]},{x:-4,y:563,name:'Back',tier:0,difficulty:0.5,guardedBy:[]}],
+  green:{cx:-8,cy:556,rx:12,ry:15,stimp:11,slope:{ang:Math.atan2(8,-6),pct:0.035}},
+  hazards:[{type:'bunker',x:10,y:250,r:8},{type:'bunker',x:16,y:275,r:8},{type:'bunker',x:22,y:300,r:8},{type:'bunker',x:2,y:556,r:7},
+    {type:'water',polygon:[[-22,540],[-14,538],[-8,542],[-6,552],[-10,562],[-20,562],[-24,552]]}],
+  trees:[[28,160],[30,260],[-30,200],[-32,320]], obst:null,
+  elevFn(x,y){return 2-0.004*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`Reachable in two for the bold. A diagonal right-to-deep fairway-bunker run (250-300) forces a tee-shot commitment; water guards the front-left of the green so the go-for-it line carries real risk. Lay-up right leaves a clean wedge.`
+};
+const HOLE_S3={
+  id:'hole_s3', number:3, name:'Saxon Glen 3 \u00b7 Par 3', preferredSide:0, oobBox:{minx:-30,maxx:34,miny:-15,maxy:225},
+  tees:[{x:0,y:4,name:'Championship',par:3,yardage:205}],
+  centerline:_cl([[0,4,16],[1,110,16],[2,205,15]]),
+  pins:[{x:0,y:198,name:'Front',tier:0,difficulty:0.5,guardedBy:['bunker']},{x:2,y:205,name:'Center',tier:0,difficulty:0.55,guardedBy:[]},{x:-4,y:213,name:'Back-left',tier:1,difficulty:0.65,guardedBy:[]}],
+  green:{cx:2,cy:205,rx:11,ry:14,stimp:12,slope:{ang:Math.atan2(-10,-2),pct:0.04}},
+  hazards:[{type:'bunker',x:-8,y:191,r:8},{type:'bunker',x:12,y:191,r:8}],
+  trees:[[-24,80],[-26,170],[26,90],[28,180]], obst:null,
+  elevFn(x,y){return 1+0.010*y+1.2*Math.exp(-(((y-188)**2)/90));},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));z+=0.5*Math.exp(-(((y-196)**2)/40));return z;},
+  notes:`Long one-shotter. Bunkers pinch the front, a false front rejects the short approach, room to bail right. Demands a committed, full strike — no half-measures.`
+};
+const HOLE_S4={
+  id:'hole_s4', number:4, name:'Saxon Glen 4 \u00b7 Par 4', preferredSide:1, oobBox:{minx:-30,maxx:62,miny:-15,maxy:486},
+  tees:[{x:0,y:4,name:'Championship',par:4,yardage:470}],
+  centerline:_cl([[0,4,19],[2,150,19],[8,270,18],[18,370,17],[24,462,16]]),
+  pins:[{x:24,y:458,name:'Front',tier:0,difficulty:0.55,guardedBy:[]},{x:26,y:465,name:'Center',tier:0,difficulty:0.6,guardedBy:[]},{x:29,y:472,name:'Back (fall-off)',tier:1,difficulty:0.8,guardedBy:[]}],
+  green:{cx:26,cy:465,rx:11,ry:14,stimp:12,slope:{ang:Math.atan2(-9,3),pct:0.035}},
+  hazards:[{type:'bunker',x:28,y:255,r:10},{type:'bunker',x:14,y:462,r:7},{type:'bunker',x:38,y:462,r:7}],
+  trees:[[-26,120],[-28,240],[-26,360],[52,160],[54,300]], obst:null,
+  elevFn(x,y){return 0.4+0.004*y-2.0*Math.exp(-(((y-480)**2)/110));},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`Long, demanding two-shotter (penal). Slight dogleg right; the bold tee line over the corner bunker at 255 shortens a brutal approach. Miss long and the green falls away — the hardest hole on the nine.`
+};
+const HOLE_S5={
+  id:'hole_s5', number:5, name:'Saxon Glen 5 \u00b7 Par 4', preferredSide:1, oobBox:{minx:-30,maxx:42,miny:-15,maxy:358},
+  tees:[{x:0,y:4,name:'Championship',par:4,yardage:340}],
+  centerline:_cl([[0,4,18],[2,110,17],[6,220,15],[10,336,15]]),
+  pins:[{x:8,y:331,name:'Front',tier:0,difficulty:0.5,guardedBy:['bunker']},{x:10,y:338,name:'Center',tier:0,difficulty:0.55,guardedBy:[]},{x:14,y:344,name:'Back-right',tier:1,difficulty:0.7,guardedBy:[]}],
+  green:{cx:10,cy:338,rx:10,ry:13,stimp:13,slope:{ang:Math.atan2(-9,-3),pct:0.045}},
+  hazards:[{type:'bunker',x:-8,y:255,r:8},{type:'bunker',x:20,y:255,r:8},{type:'bunker',x:1,y:332,r:7}],
+  trees:[[-24,120],[-26,230],[40,150],[42,260]], obst:null,
+  blockers:[{x:18,y:278,r:6,height:18}],   // the tree guarding the aggressive right line at the green
+  elevFn(x,y){return 0.5+0.003*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`The decision hole — short, semi-drivable, the signature of the nine. The card tempts you to take on a firm green guarded by pinching bunkers (255) and a tree on the aggressive right line; or lay up to a full wedge. Pure decision golf.`
+};
+const HOLE_S6={
+  id:'hole_s6', number:6, name:'Saxon Glen 6 \u00b7 Par 3', preferredSide:-1, oobBox:{minx:-30,maxx:28,miny:-15,maxy:180},
+  tees:[{x:0,y:4,name:'Championship',par:3,yardage:160}],
+  centerline:_cl([[0,4,15],[0,85,15],[-2,160,14]]),
+  pins:[{x:3,y:154,name:'Front-right',tier:0,difficulty:0.5,guardedBy:['bunker']},{x:-2,y:160,name:'Center',tier:0,difficulty:0.55,guardedBy:[]},{x:-8,y:166,name:'Back-left (redan)',tier:1,difficulty:0.75,guardedBy:[]}],
+  green:{cx:-2,cy:160,rx:12,ry:13,stimp:13,slope:{ang:Math.atan2(7,-9),pct:0.05}},
+  hazards:[{type:'bunker',x:9,y:150,r:8}],
+  trees:[[-24,70],[-26,150],[24,80]], obst:null,
+  elevFn(x,y){return 1+0.012*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;let z=-p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));z+=0.45*Math.exp(-(((x-6)**2)/120+((y-152)**2)/120));return z;},
+  notes:`Redan (Mae). Short but firm: a front-left feeder slope runs a well-judged ball back toward a tucked back-left pin, while the front-right bunker and a falloff right punish the timid line. Wind-exposed — the ground game is the play. Keep it firm.`
+};
+const HOLE_S7={
+  id:'hole_s7', number:7, name:'Saxon Glen 7 \u00b7 Par 5', preferredSide:0, oobBox:{minx:-48,maxx:46,miny:-15,maxy:618},
+  tees:[{x:0,y:4,name:'Championship',par:5,yardage:600}],
+  centerline:_cl([[0,4,19],[2,150,18],[6,290,17],[2,420,16],[-2,520,15],[-4,596,15]]),
+  pins:[{x:-8,y:591,name:'Front',tier:0,difficulty:0.5,guardedBy:[]},{x:-4,y:598,name:'Center',tier:0,difficulty:0.55,guardedBy:[]},{x:0,y:605,name:'Back',tier:1,difficulty:0.6,guardedBy:['bunker']}],
+  green:{cx:-4,cy:598,rx:11,ry:14,stimp:12,slope:{ang:Math.atan2(-9,-2),pct:0.035}},
+  hazards:[{type:'bunker',x:16,y:300,r:8},{type:'bunker',x:6,y:598,r:7},{type:'bunker',x:-16,y:598,r:7},
+    {type:'water',polygon:[[-30,436],[30,440],[30,452],[-30,448]]}],
+  trees:[[-30,200],[40,220],[-32,400]], obst:null,
+  blockers:[{x:26,y:300,r:6,height:18},{x:28,y:360,r:6,height:18},{x:-22,y:330,r:6,height:18}],   // trees pinching the second-shot corridor
+  elevFn(x,y){return 1+0.004*y+1.5*Math.exp(-(((y-300)**2)/4000));},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`True three-shot par 5. Trees pinch the second-shot corridor and a creek crosses the lay-up zone at ~440 — the second shot is a placement decision, not a power grab. Position to a full third into a well-bunkered green. Strategy over length.`
+};
+const HOLE_S8={
+  id:'hole_s8', number:8, name:'Saxon Glen 8 \u00b7 Par 4', preferredSide:-1, oobBox:{minx:-50,maxx:35,miny:-15,maxy:472},
+  tees:[{x:0,y:4,name:'Championship',par:4,yardage:455}],
+  centerline:_cl([[0,4,18],[-2,150,18],[-8,270,17],[-16,365,16],[-22,450,15]]),
+  pins:[{x:-22,y:445,name:'Front',tier:0,difficulty:0.6,guardedBy:['water']},{x:-24,y:452,name:'Center',tier:0,difficulty:0.65,guardedBy:['water']},{x:-26,y:459,name:'Back (water)',tier:1,difficulty:0.85,guardedBy:['water']}],
+  green:{cx:-24,cy:452,rx:11,ry:14,stimp:12,slope:{ang:Math.atan2(-8,5),pct:0.035}},
+  hazards:[{type:'bunker',x:-12,y:452,r:8},
+    {type:'water',polygon:[[-26,70],[-30,70],[-34,150],[-36,300],[-34,455],[-26,455]]}],
+  trees:[[18,140],[20,260],[22,380]], obst:null,
+  elevFn(x,y){return 0.5+0.004*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`The closing stretch bites (penal). A strong dogleg left with water down the entire left side, tight to the green's left edge. The braver you cut the corner, the shorter the approach — but the water never lets go. Bail right and the bunker waits.`
+};
+const HOLE_S9={
+  id:'hole_s9', number:9, name:'Saxon Glen 9 \u00b7 Par 4', preferredSide:1, oobBox:{minx:-35,maxx:46,miny:-15,maxy:463},
+  tees:[{x:0,y:4,name:'Championship',par:4,yardage:445}],
+  centerline:_cl([[0,4,19],[2,150,18],[6,265,17],[10,360,16],[12,440,16]]),
+  pins:[{x:10,y:436,name:'Front',tier:0,difficulty:0.55,guardedBy:['bunker']},{x:12,y:443,name:'Center',tier:0,difficulty:0.6,guardedBy:[]},{x:14,y:450,name:'Back',tier:1,difficulty:0.65,guardedBy:['bunker']}],
+  green:{cx:12,cy:443,rx:11,ry:14,stimp:11,slope:{ang:Math.atan2(-10,-3),pct:0.03}},
+  hazards:[{type:'bunker',x:2,y:443,r:7},{type:'bunker',x:22,y:443,r:7},{type:'bunker',x:-10,y:275,r:8}],
+  trees:[[-28,160],[-30,300],[46,200],[48,340]], obst:null,
+  elevFn(x,y){return 0.5+0.030*y;},
+  greenFn(x,y,G){const a=G.slope.ang,p=G.slope.pct;return -p*((x-G.cx)*Math.cos(a)+(y-G.cy)*Math.sin(a));},
+  notes:`The closer — a stout uphill par 4 (green plays ~13 yards above the tee) to a green framed by bunkers left and right. A demanding but fair approach to finish the nine.`
+};
+const HOLES=[HOLE_BEND, HOLE_S1, HOLE_S2, HOLE_S3, HOLE_S4, HOLE_S5, HOLE_S6, HOLE_S7, HOLE_S8, HOLE_S9];   // FRONT NINE: The Bend (control/anchor, idx 0) + Saxon Glen 1-9 (par 36). Paramount holes (HOLE_15..18) defined above but retired from the routing.
 let activeHoleIdx=0;
 let HOLE=HOLES[activeHoleIdx];                    // ACTIVE hole — everything below reads this
 const COURSE={id:'course_bend',name:'The Bend GC',designerArchetype:'strategic',holes:HOLES};
@@ -790,7 +937,9 @@ let aiming=true,holed=false,lastBall=null,lastLie=null,lastStrokes=0,lastCL=null
 let pendingGimme=null;   // TAP IN: leave distance (ft) when a tap-in is offered but not yet conceded
 let tracer=null; // {pts:[], fade}
 let shotMeta=null; // BRASS YARDAGE: {carry,roll,total,club} of the last ball-flight shot (post-resolve)
-const PAR=4;
+let PAR=4;   // ROUND ONE: now per-hole (set in loadHole). Was const 4 — every hole scored as par 4, mis-scoring P17 (par 5) / P18 (par 3).
+let ROUND=null;          // ROUND ONE: the active round (plain serializable, mirrors entities.ts Round). null = sandbox.
+let curHoleShotIds=[];   // SHOT LEDGER: ids of ShotResults struck on the current hole (→ HoleScore.shotIds)
 
 /* ============================================================ ENGINE */
 const WINDEXP={D:0.9,'3W':0.92,'5W':0.95,H:1.0,'4i':1.0,'5i':1.02,'6i':1.05,'7i':1.08,'8i':1.12,'9i':1.16,PW:1.22,GW:1.26,SW:1.3,LW:1.34};
@@ -1202,7 +1351,13 @@ function resolvePutt(plan){
   const paceK={lag:0.068,die:0.040,charge:0.052}[pace];
   const paceStd=paceK*(1.35-0.55*skill)+D*0.0009;
   const res=rollPutt(ball.x,ball.y, sol.ang+gauss()*lineStd, sol.v*(1+gauss()*paceStd));
+  const _puttFrom={x:ball.x,y:ball.y};   // SHOT LEDGER: pre-putt position
   animatePuttPath(res.pts,()=>{
+    const _e=res.end;   // SHOT LEDGER: record the putt (holed or not) before branching
+    recordShot({ club:'P', shape:'straight', trajectory:'putt', effort:pace,
+      intendedTarget:{x:PIN.x,y:PIN.y}, rest:res.holed?{x:PIN.x,y:PIN.y}:{x:_e[0],y:_e[1]},
+      actualCarry:null, offline:null, startLie:'green',
+      restLie:res.holed?'hole':lieAt(_e[0],_e[1]), holed:res.holed, putt:true, from:_puttFrom });
     if(res.holed){finishPutt();return;}
     const e=res.end,nl=lieAt(e[0],e[1]);
     if(nl==='water'){strokes++;const safe=backOut(ball,{x:e[0],y:e[1]});ball=safe;lie=lieAt(safe.x,safe.y);captureLie(safe.x,safe.y);
@@ -1218,6 +1373,13 @@ function settle(land,rest,note){            // COPPER FINCH: fly to landing, the
 }
 function finishSettle(rest,note){
   const lx=rest.x,ly=rest.y;
+  // SHOT LEDGER: record the struck (non-putt) shot at its computed rest, before penalty/hole-out branching.
+  if(shotMeta){ const rl=lieAt(lx,ly);
+    recordShot({ club:shotMeta.cid, shape, trajectory:traj, effort:swing,
+      intendedTarget: target?{x:target.x,y:target.y}:null, rest:{x:lx,y:ly},
+      actualCarry:+(shotMeta.carry||0).toFixed(1), offline:+(shotMeta.offline||0).toFixed(1),
+      startLie:lastLie, restLie:rl, holed:Math.hypot(lx-PIN.x,ly-PIN.y)<0.18,
+      components: shotMeta._components||null, putt:false }); }
   let nl=lieAt(lx,ly),extra='';
   if(nl==='water'){strokes++;const safe=backOut(ball,{x:lx,y:ly});ball=safe;lie=lieAt(safe.x,safe.y);extra='Found the water — penalty drop. ';}
   else if(nl==='ob'){strokes++;ball={...lastBall};lie=lastLie;extra='Out of bounds — stroke & distance. ';}
@@ -1250,10 +1412,15 @@ function offerGimme(leaveFt){            // TAP IN: ball rests in tap-in range; 
 function concedeGimme(){
   if(pendingGimme==null)return;
   const ft=pendingGimme;clearGimme();
-  strokes++;log('Tap-in conceded ('+ft.toFixed(1)+' ft).');finishPutt();
+  strokes++;
+  recordShot({ club:'P', shape:'straight', trajectory:'putt', effort:'tap', intendedTarget:{x:PIN.x,y:PIN.y},
+    rest:{x:PIN.x,y:PIN.y}, actualCarry:null, offline:null, startLie:'green', restLie:'hole', holed:true, putt:true, conceded:true });
+  log('Tap-in conceded ('+ft.toFixed(1)+' ft).');finishPutt();
 }
 function finishPutt(){holed=true;ball={x:PIN.x,y:PIN.y};lie='hole';
   const rel=strokes-PAR;const nm={'-3':'Albatross!!','-2':'Eagle!','-1':'Birdie!','0':'Par.','1':'Bogey.','2':'Double bogey.'}[rel]||(rel<0?'Great score!':'+'+rel);
+  recordHoleScore();   // ROUND ONE: log this hole into the round
+  renderScorecard(); updateRoundControls();
   log('Holed out in '+strokes+'. '+nm);flash('In the hole! '+strokes+' strokes — '+nm);sync();render();}
 function commentate(l){return{
   fairway:['Striped down the short grass.','In the fairway — clean look.','Perfect position.'][rnd(3)],
@@ -2113,6 +2280,8 @@ function loadHole(idx){
   HOLE=HOLES[activeHoleIdx];
   CENTER=HOLE.centerline.map(n=>[n.x,n.y,n.corridorWidth]);
   GREEN=HOLE.green; PINS=HOLE.pins; TEE=HOLE.tees[0];
+  PAR=(HOLE.tees[0]||{}).par||HOLE.par||4;   // ROUND ONE: per-hole par
+  curHoleShotIds=[];                          // SHOT LEDGER: fresh hole
   BUNKERS=HOLE.hazards.filter(h=>h.type==='bunker').map(h=>({x:h.x,y:h.y,r:h.r}));
   WATER=(HOLE.hazards.find(h=>h.type==='water')||{polygon:[]}).polygon;
   TREES=HOLE.trees||[]; OBST=HOLE.obst||null; BLOCKERS=HOLE.blockers||[];
@@ -2136,9 +2305,17 @@ function gotoHole(idx){
    if(ht)ht.textContent='Hole '+HOLE.number+' · Par '+(t.par||'');
    if(hs)hs.textContent=(HOLE.name||HOLE.id)+(t.yardage?' · '+t.yardage+' yds':'');}
   fit();fitLie();fitGreen();sync();render();drawGreenView();setView(false);
+  if(typeof renderScorecard==='function'){renderScorecard();updateRoundControls();}
   flash('Hole '+HOLE.number+' · '+(HOLE.name||HOLE.id)+'. Wind: '+WIND.mph+' mph'+(HOLES.length<2?' — only hole authored, wraps to itself.':'.'));
 }
-document.getElementById('nexthole').addEventListener('click',()=>gotoHole(activeHoleIdx+1));
+document.getElementById('nexthole').addEventListener('click',()=>{
+  if(ROUND){
+    if(ROUND.status==='complete'){startRound();return;}   // New round
+    if(!holed){flash('Finish the hole first.');return;}
+    advanceRound(); return;
+  }
+  gotoHole(activeHoleIdx+1);   // sandbox fallback (no active round)
+});
 window.addEventListener("resize",()=>{fit();fitLie();fitGreen();render();drawLie();drawGreenView();});
 
 /* ===================================================================
@@ -2257,16 +2434,92 @@ window.dumpSnapshot=function(){const s=buildSnapshot();console.log('%cSITUATION 
 addEventListener('keydown',e=>{if(e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();window.dumpSnapshot();if(typeof flash==='function')flash('Snapshot logged to console (dev).');}});
 
 /* ---------- init ---------- */
+/* ===================================================================
+ * ROUND ONE (Lever B, first slice) — a playable round over the 4 authored Paramount holes.
+ * ROUND is a plain serializable object (mirrors entities.ts Round): scores[] of HoleScore,
+ * shots[] of ShotResult (SHOT LEDGER), pinSelection[], status. In-memory only this slice — no
+ * IndexedDB, no AI field/cut/leaderboard, no career. The Bend (HOLES[0]) is NOT in the round; it
+ * stays the byte-stable sandbox/regression anchor, reachable only via direct loadHole.
+ * =================================================================== */
+const ROUND_ROUTING=[1,2,3,4,5,6,7,8,9];   // FRONT NINE: Saxon Glen out nine (HOLES indices 1-9; idx 0 is the Bend anchor)
+function startRound(){
+  ROUND={courseId:'paramount_cc', order:ROUND_ROUTING.slice(), idx:0,
+         scores:[], shots:[], pinSelection:[], status:'inProgress'};
+  curHoleShotIds=[];
+  gotoHole(ROUND.order[0]);
+  updateRoundControls(); renderScorecard();
+}
+function advanceRound(){
+  if(!ROUND||ROUND.status!=='inProgress')return;
+  if(ROUND.idx>=ROUND.order.length-1){finishRound();return;}
+  ROUND.idx++; gotoHole(ROUND.order[ROUND.idx]); updateRoundControls(); renderScorecard();
+}
+function finishRound(){
+  if(!ROUND)return; ROUND.status='complete';
+  const tot=ROUND.scores.reduce((a,s)=>a+s.strokes,0), par=ROUND.scores.reduce((a,s)=>a+s.par,0), rel=tot-par;
+  updateRoundControls(); renderScorecard();
+  flash('Round complete — '+tot+' ('+(rel===0?'E':(rel>0?'+'+rel:rel))+' to par).');
+}
+// record the just-completed hole into the round (called from finishPutt on hole-out)
+function recordHoleScore(){
+  if(!ROUND||ROUND.status!=='inProgress')return;
+  if(ROUND.scores.some(s=>s.holeNumber===HOLE.number))return;          // guard double-record
+  ROUND.scores.push({holeNumber:HOLE.number, par:PAR, strokes, shotIds:curHoleShotIds.slice()});
+  ROUND.pinSelection[ROUND.idx]=pinIdx;
+  updateRoundControls();
+}
+// SHOT LEDGER: append a schema-shaped ShotResult and link it into the current hole.
+function recordShot(rec){
+  if(!ROUND)return;
+  const id='s'+(ROUND.shots.length+1);
+  ROUND.shots.push(Object.assign({id, holeNumber:HOLE.number, shotIndex:strokes}, rec));
+  curHoleShotIds.push(id);
+}
+function updateRoundControls(){
+  const b=document.getElementById('nexthole'); if(!b)return;
+  if(!ROUND){b.textContent='Next hole →';b.disabled=false;return;}
+  if(ROUND.status==='complete'){b.textContent='New round ↺';b.disabled=false;return;}
+  const last=ROUND.idx>=ROUND.order.length-1;
+  if(!holed){b.textContent='Finish the hole';b.disabled=true;}
+  else{b.textContent=last?'Finish round →':'Next hole →';b.disabled=false;}
+}
+function renderScorecard(){
+  const el=document.getElementById('scorecard'); if(!el)return;
+  if(!ROUND){el.innerHTML='';return;}
+  let tot=0,parTot=0,thru=0;
+  const cell='padding:1px 2px;text-align:center';
+  const rows=ROUND.order.map(hidx=>{
+    const h=HOLES[hidx], num=h.number, par=(h.tees[0]||{}).par||4;
+    const sc=ROUND.scores.find(s=>s.holeNumber===num);
+    const isCur=(hidx===ROUND.order[ROUND.idx] && ROUND.status==='inProgress');
+    let score='–', relCell='';
+    if(sc){tot+=sc.strokes;parTot+=sc.par;thru++;score=sc.strokes;const r=tot-parTot;relCell=r===0?'E':(r>0?'+'+r:r);}
+    else if(isCur&&strokes>0){score=strokes+'·';}
+    const bg=isCur?'background:rgba(217,179,76,.14);border-radius:4px':'';
+    return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;font-size:11px;${bg}">`
+      +`<span style="${cell};color:var(--txt)">${num}</span><span style="${cell};color:var(--muted)">${par}</span>`
+      +`<span style="${cell};font-weight:600;color:var(--txt)">${score}</span><span style="${cell};color:var(--muted)">${relCell}</span></div>`;
+  }).join('');
+  const rel=tot-parTot;
+  const hero = ROUND.status==='complete'
+    ? `Final · ${tot} (${rel===0?'E':(rel>0?'+'+rel:rel)})`
+    : `Thru ${thru} · ${thru===0?'E':(rel===0?'E':(rel>0?'+'+rel:rel))}`;
+  el.innerHTML=`<div style="font-weight:700;color:var(--gold);font-size:13px;margin-bottom:4px">${hero}</div>`
+    +`<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1.2fr;font-size:9px;letter-spacing:.05em;color:var(--muted)">`
+    +`<span style="${cell}">H</span><span style="${cell}">PAR</span><span style="${cell}">SC</span><span style="${cell}">±</span></div>`+rows;
+}
+
 function init(){const sel=document.getElementById('club');
   sel.innerHTML=CLUBS.map(c=>`<option value="${c[0]}">${c[1]}${c[2]?' · '+Math.round(carryOf(c[0]))+'y':''}</option>`).join('');
   sel.value='D';
   document.getElementById('pin').innerHTML=PINS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
   rollWind();captureLie(TEE.x,TEE.y);buildAttrs();fit();fitLie();fitGreen();sync();render();drawGreenView();
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
-  flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
+  flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
+  startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.31.0 — end */
+/* golf-sim 0.33.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.31.0 -->
+<!-- golf-sim 0.33.0 -->
