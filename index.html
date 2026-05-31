@@ -1,4 +1,4 @@
-<!-- golf-sim 0.34.0 -->
+<!-- golf-sim 0.35.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -47,6 +47,15 @@
   .sec{margin-bottom:16px}
   .sec-t{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-lt);
     margin:0 0 9px;display:flex;justify-content:space-between;align-items:center}
+  /* DECK SHUFFLE: collapsible dock sections — <details class="sec"> with a <summary> styled like .sec-t */
+  details.sec{margin-bottom:14px}
+  details.sec>summary{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-lt);
+    margin:0 0 9px;display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;user-select:none}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::after{content:'\25BE';font-size:9px;color:var(--muted);margin-left:auto;transition:transform .15s}
+  details.sec:not([open])>summary::after{transform:rotate(-90deg)}
+  details.sec>summary:hover{color:#fff}
+  details.sec[hidden]{display:none}
   label.fld{display:block;font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em}
   select{width:100%;background:#0e1b13;color:var(--txt);border:1px solid #2f4a39;border-radius:6px;padding:8px 9px;font-size:14px;font-weight:600}
   .pwrow{display:flex;gap:6px}
@@ -117,40 +126,47 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.34.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.35.0</span></div></div>
     <div class="panel"><div class="scroll">
-      <div class="sec">
+      <!-- DECK SHUFFLE: order = Score → Hole → Scorecard → Yardage Book → Cover Numbers → Layups → Your Bag → Golfer Attributes → Course Setup. All collapsible, default open. -->
+      <details class="sec" open><summary>Score</summary>
         <div class="score">
           <div><div class="big" id="strokes">0</div><div class="lbl">Strokes</div></div>
           <div><div class="rel" id="rel">E</div><div class="lbl">To Par</div></div>
           <div style="margin-left:auto;text-align:right"><div class="rel" id="topin">401</div><div class="lbl">Caddy's read</div></div>
         </div>
-      </div>
-      <div class="lastshot" id="lastshot" style="display:none"></div>
-      <div class="sec">
-        <div class="sec-t">Golfer Attributes <span class="reset" id="randbtn">randomize</span></div>
-        <div class="preset"><button data-pre="rookie">Rookie</button><button data-pre="pro">Tour Pro</button><button data-pre="bomber">Bomber</button><button data-pre="surgeon">Surgeon</button></div>
-        <div id="attrs"></div>
-        <div class="smallnote">Drag a slider and watch the shot cone react. <i>Power</i>→distance, <i>Accuracy</i>→cone width, <i>Consistency</i>→long/short spread &amp; mishits, <i>Putting</i>→make %.</div>
-      </div>
-      <div class="sec">
-        <div class="sec-t">Your Bag <span style="color:var(--muted);font-size:10px">carry · ±L/R · ±long/short</span></div>
-        <table id="bag"></table>
-      </div>
-      <div class="sec"><div id="ybook"></div></div>
-      <div class="sec">
-        <div class="sec-t">Course Setup <span style="color:var(--muted);font-size:10px">read-only · this round</span></div>
-        <div id="setupReadout"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-t">Scorecard</div>
-        <div id="scorecard"></div>
-        <div class="log" id="log"></div>
-        <label class="fld" style="margin-top:10px">Pin position</label>
+        <div class="lastshot" id="lastshot" style="display:none"></div>
+      </details>
+      <details class="sec" open><summary>Hole</summary>
+        <label class="fld">Pin position</label>
         <select id="pin"></select>
         <button class="reset" id="newhole" style="width:100%;margin-top:8px">New attempt (random wind)</button>
         <button class="reset" id="nexthole" style="width:100%;margin-top:6px">Next hole →</button>
-      </div>
+      </details>
+      <details class="sec" open><summary>Scorecard</summary>
+        <div id="scorecard"></div>
+        <div class="log" id="log"></div>
+      </details>
+      <details class="sec" open id="sec-ybook"><summary>Yardage Book</summary>
+        <div id="ybook"></div>
+      </details>
+      <details class="sec" open id="sec-cover"><summary>Cover Numbers</summary>
+        <div id="covernums"></div>
+      </details>
+      <details class="sec" open id="sec-layups"><summary>Layups</summary>
+        <div id="layups"></div>
+      </details>
+      <details class="sec" open><summary>Your Bag <span style="color:var(--muted);font-size:10px;letter-spacing:0;text-transform:none">carry · ±L/R · ±long/short</span></summary>
+        <table id="bag"></table>
+      </details>
+      <details class="sec" open><summary>Golfer Attributes <span class="reset" id="randbtn">randomize</span></summary>
+        <div class="preset"><button data-pre="rookie">Rookie</button><button data-pre="pro">Tour Pro</button><button data-pre="bomber">Bomber</button><button data-pre="surgeon">Surgeon</button></div>
+        <div id="attrs"></div>
+        <div class="smallnote">Drag a slider and watch the shot cone react. <i>Power</i>→distance, <i>Accuracy</i>→cone width, <i>Consistency</i>→long/short spread &amp; mishits, <i>Putting</i>→make %.</div>
+      </details>
+      <details class="sec" open><summary>Course Setup <span style="color:var(--muted);font-size:10px;letter-spacing:0;text-transform:none">read-only · this round</span></summary>
+        <div id="setupReadout"></div>
+      </details>
     </div></div>
   </div>
 
@@ -159,7 +175,7 @@
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
     <button id="zoomtoggle" style="position:absolute;top:12px;right:14px;z-index:6;background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.5);color:var(--gold-lt);font:600 11px Outfit;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer">&#8854; zoom out</button>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.34.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.35.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -207,7 +223,25 @@
   </div>
 </div>
 <script>
-const VERSION='0.34.0';  /* SemVer.
+const VERSION='0.35.0';  /* SemVer.
+   DOCK REWORK BATCH (0.35.0, minor) = DECK SHUFFLE + COVER READ.
+   DECK SHUFFLE (layout) — left dock restructured into collapsible <details class="sec"> sections
+     (summary styled like the old .sec-t; default open; caret rotates). New order: Score → Hole →
+     Scorecard → Yardage Book → Cover Numbers → Layups → Your Bag → Golfer Attributes → Course Setup.
+     The Pin/New-attempt/Next-hole controls moved out of Scorecard into a top "Hole" section (the fix
+     for the scroll-to-controls complaint — Mara). The single #ybook render is split into THREE
+     containers: #ybook (To pin/front/back), #covernums (Cover Numbers), #layups. renderYardageBook
+     now fills each and shows/hides the section WRAPPERS (#sec-ybook/#sec-cover/#sec-layups via .hidden)
+     instead of one inner div. 'randomize' lives inside a <summary> now → its handler stops propagation
+     so clicking it doesn't toggle the section.
+   COVER READ (number semantics) — To Front / To Back are now TRUE SURVEYED (given geometry): bare
+     rounded integers, no caddie lens. To Pin stays the caddie's FROSTED YARDAGE playing estimate (bold).
+     DNA holds: the hidden truth is the PLAYING yardage (wind/elev/lie), not the raw survey, so surfacing
+     surveyed green edges is not an oracle. "Trouble ahead" renamed "Cover Numbers"; new _hazardCover()
+     gives carry-to-clear (front=reach near edge, clear=clear far edge) for BOTH polygon water and circle
+     bunkers (projects center onto the ball→pin line; chord through the circle = near/far edges; suppressed
+     when the line doesn't cross, clear−front<=3). Hazard + layup numbers stay caddie estimates per scope.
+   Prev FULL SWEEP BATCH (0.34.0).
    FULL SWEEP BATCH (0.34.0, minor) = DRY GREENS + LIE LEGAL + REAL CADDIE + FORWARD FRAME.
    DRY GREENS (bug) — water polygons on Saxon 2 & 8 were drawn through the green; lieAt checks water
      BEFORE green, so part of the putting surface read as 'water' → putts there = penalty loop. Moved
@@ -1992,6 +2026,18 @@ function _carryAndClear(poly){
     if(lat<lim && proj>0){if(proj<minP)minP=proj; if(proj>maxP)maxP=proj;}}
   if(minP===Infinity) return null;
   return{front:minP, clear:maxP};}
+// COVER READ: unified carry-to-clear along the ball→pin line for ANY hazard. Polygon → far edge in
+// the lateral window (water, as before). Circle bunker → project center onto the line; the chord the
+// line cuts through the circle gives near (front) + far (clear) edges. Returns null if behind the ball
+// or laterally off the line (a bunker the line doesn't cross has no meaningful far edge to clear).
+function _hazardCover(h){
+  if(h.polygon) return _carryAndClear(h.polygon);
+  const dx=PIN.x-ball.x,dy=PIN.y-ball.y,d=Math.hypot(dx,dy); if(d<0.1)return null;
+  const ux=dx/d,uy=dy/d, r=h.r||0, rx=h.x-ball.x, ry=h.y-ball.y;
+  const proj=rx*ux+ry*uy, lat=Math.abs(rx*(-uy)+ry*ux);
+  if(proj<=0) return null;                              // hazard is behind the ball
+  const half = lat<r ? Math.sqrt(r*r-lat*lat) : 0;     // line crosses the circle → chord half-length, else 0
+  return{front:Math.max(0,proj-half), clear:proj+half};}
 function _hazardCenter(h){if(!h.polygon)return{x:h.x,y:h.y};
   let cx=0,cy=0; for(const [x,y] of h.polygon){cx+=x;cy+=y;}
   return{x:cx/h.polygon.length, y:cy/h.polygon.length};}
@@ -2018,11 +2064,14 @@ function _hazardLabel(h){
   if(Math.abs(off)<6) return 'Fairway bunker';
   return off>0 ? 'Right bunker' : 'Left bunker';}
 function renderYardageBook(){
-  const e=document.getElementById('ybook'); if(!e) return;
+  const secYB=document.getElementById('sec-ybook'), secCN=document.getElementById('sec-cover'), secLU=document.getElementById('sec-layups');
+  const eYB=document.getElementById('ybook'), eCN=document.getElementById('covernums'), eLU=document.getElementById('layups');
+  if(!eYB) return;
+  const hideAll=()=>{[secYB,secCN,secLU].forEach(s=>{if(s)s.hidden=true;});};
   // hide on green / fringe-with-putter / after hole-out — yardage book isn't the right reference there
   const useP=document.getElementById('club')&&document.getElementById('club').value==='P';
-  if(holed || lie==='green' || (lie==='fringe' && useP)){e.style.display='none'; return;}
-  const edges=_greenEdges(); if(!edges){e.style.display='none'; return;}
+  if(holed || lie==='green' || (lie==='fringe' && useP)){hideAll(); return;}
+  const edges=_greenEdges(); if(!edges){hideAll(); return;}
   const toPin=Math.hypot(PIN.x-ball.x, PIN.y-ball.y);
   const toFront=Math.hypot(ball.x-edges.front.x, ball.y-edges.front.y);
   const toBack =Math.hypot(ball.x-edges.back.x,  ball.y-edges.back.y);
@@ -2033,7 +2082,8 @@ function renderYardageBook(){
     const c=_hazardCenter(h); if(!_isAhead(c)) continue;
     const d=_hazardDist(h);
     const entry={label:_hazardLabel(h), dist:d};
-    if(h.type==='water'){const cc=_carryAndClear(h.polygon); if(cc) entry.clear=cc.clear;}
+    const cc=_hazardCover(h);                                  // COVER READ: far-edge carry for water AND bunkers
+    if(cc && cc.clear-cc.front>3){entry.carry=cc.front; entry.clear=cc.clear;}  // only when the line actually crosses it
     hazards.push(entry);}
   hazards.sort((a,b)=>a.dist-b.dist);
 
@@ -2042,27 +2092,39 @@ function renderYardageBook(){
   for(const N of [50,75,100,125,150]){const d=toPin-N; if(d>30) layups.push({N,d});}
   layups.sort((a,b)=>b.d-a.d);  // longest layup (closest to a tee shot) listed first
 
-  const eB=elev(ball.x,ball.y);   // FROSTED YARDAGE: numbers below are the caddie's reads, not raw truth
-  let html=`<div class="sec-t">Yardage Book</div>`+
-    `<table class="ybook"><tbody>`+
+  const eB=elev(ball.x,ball.y);
+  // COVER READ: To Front / To Back are TRUE SURVEYED (given geometry) — bare integers, no caddie lens.
+  // To Pin stays the caddie's FROSTED YARDAGE playing estimate (bold). DNA: the hidden truth is the
+  // PLAYING yardage, not the survey, so surfacing surveyed edges doesn't break the no-oracle rule.
+  eYB.innerHTML=`<table class="ybook"><tbody>`+
       `<tr><td>To pin</td><td><b>${yEst(toPin,toPin,elev(PIN.x,PIN.y)-eB,'pin').txt}</b></td></tr>`+
-      `<tr><td>To front</td><td>${yEst(toFront,toFront,elev(edges.front.x,edges.front.y)-eB,'front').txt}</td></tr>`+
-      `<tr><td>To back</td><td>${yEst(toBack,toBack,elev(edges.back.x,edges.back.y)-eB,'back').txt}</td></tr>`+
-    `</tbody></table>`;
+      `<tr><td>To front</td><td>${Math.round(toFront)}</td></tr>`+
+      `<tr><td>To back</td><td>${Math.round(toBack)}</td></tr>`+
+    `</tbody></table>`+
+    `<div class="smallnote">Front/back surveyed (given) · pin is the caddy's read.</div>`;
+  if(secYB)secYB.hidden=false;
+
+  // Cover Numbers: the caddie's carry-to-clear per hazard (estimate). carry = reach near edge, clear = clear far edge.
   if(hazards.length){
-    html+=`<div class="ybook-sub">Trouble ahead</div><table class="ybook"><tbody>`;
+    let h2=`<table class="ybook"><tbody>`;
     for(const h of hazards){
       const cC=_hazardCenter(h), de=elev(cC.x,cC.y)-eB;
       const v = h.clear!=null
-        ? `${yEst(h.dist,h.dist,de,'haz:'+h.label).txt} · ${yEst(h.clear,h.dist,de,'clr:'+h.label).txt} clear`
+        ? `${yEst(h.carry,h.carry,de,'haz:'+h.label).txt} · ${yEst(h.clear,h.carry,de,'clr:'+h.label).txt} clear`
         : `${yEst(h.dist,h.dist,de,'haz:'+h.label).txt}`;
-      html+=`<tr><td>${h.label}</td><td>${v}</td></tr>`;}
-    html+=`</tbody></table>`;}
+      h2+=`<tr><td>${h.label}</td><td>${v}</td></tr>`;}
+    h2+=`</tbody></table>`;
+    eCN.innerHTML=h2; if(secCN)secCN.hidden=false;
+  }else{ eCN.innerHTML=''; if(secCN)secCN.hidden=true; }
+
+  // Layups stay caddie estimates.
   if(layups.length){
-    html+=`<div class="ybook-sub">Layups</div><table class="ybook"><tbody>`;
-    for(const l of layups) html+=`<tr><td>Leave ${l.N}</td><td>${yEst(l.d,l.d,0,'lay:'+l.N).txt}</td></tr>`;
-    html+=`</tbody></table>`;}
-  e.innerHTML=html; e.style.display='block';}
+    let h3=`<table class="ybook"><tbody>`;
+    for(const l of layups) h3+=`<tr><td>Leave ${l.N}</td><td>${yEst(l.d,l.d,0,'lay:'+l.N).txt}</td></tr>`;
+    h3+=`</tbody></table>`;
+    eLU.innerHTML=h3; if(secLU)secLU.hidden=false;
+  }else{ eLU.innerHTML=''; if(secLU)secLU.hidden=true; }
+}
 
 function sync(){
   const toPin=Math.round(Math.hypot(PIN.x-ball.x,PIN.y-ball.y));
@@ -2332,7 +2394,8 @@ rowSel('trajrow','t',v=>traj=v);
 rowSel('styperow','s',v=>shotType=v);
 rowSel('pacerow','pc',v=>pace=v);
 document.querySelectorAll('.preset button').forEach(b=>b.addEventListener('click',()=>setPreset(b.dataset.pre)));
-document.getElementById('randbtn').addEventListener('click',()=>{
+document.getElementById('randbtn').addEventListener('click',(ev)=>{
+  ev.preventDefault(); ev.stopPropagation();   // DECK SHUFFLE: it lives inside a <summary> now — don't toggle the section
   golfer.ballSpeed={driver:145+rnd(48),sevenIron:98+rnd(34),pitchingWedge:80+rnd(26)};
   golfer.dispersion={lateral:13+rnd(22),distance:6+rnd(13)};
   golfer.sgAroundGreen=Math.round((-1.5+Math.random()*2)*10)/10;
@@ -2596,8 +2659,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.34.0 — end */
+/* golf-sim 0.35.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.34.0 -->
+<!-- golf-sim 0.35.0 -->
