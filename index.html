@@ -1,4 +1,4 @@
-<!-- golf-sim 0.30.0 -->
+<!-- golf-sim 0.31.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -117,7 +117,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.30.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.31.0</span></div></div>
     <div class="panel"><div class="scroll">
       <div class="sec">
         <div class="score">
@@ -157,7 +157,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.30.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.31.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -205,7 +205,26 @@
   </div>
 </div>
 <script>
-const VERSION='0.30.0';  /* SemVer.
+const VERSION='0.31.0';  /* SemVer.
+   CANT REACH (0.31.0, minor) — caddie "you can't get there" advance/lay-up read:
+   the companion to CLUB COVER. When NO club's lie+swing-adjusted carry covers the estimate AND the
+   player is actually going for the green (explicit target within ~the green, so it never fires on a
+   fresh tee whose aim defaults to the pin, nor on a fairway lay-up spot already reachable), the read
+   flips from "Plays ~Xy · I'd go <club>" to "Can't reach — <longest> is the most I've got, ~Yy,
+   advance it, leaves ~Zy, then wedge close." Mirror of PUNCH OUT (blocked → recovery voice).
+   caddieLensRead now returns `reaches` + `recEff` (the adjusted carry of the chosen club).
+   Prev CLUB COVER (0.30.1).
+   CLUB COVER (0.30.1, patch) — caddie recommends a club that actually REACHES from the lie:
+   the rec used to pick the club whose CLEAN nominal carry was numerically closest to the estimate
+   (Math.abs(baseCarry-estPlays)) — lie-blind and "closest-not-reaches", so from rough at ~118y it
+   handed you a Gap W (112 clean, max 87 from rough). Now it scales each club's baseCarry by the
+   CURRENT lie + swing (same factors resolution uses: rough 0.84 / bunker 0.66, smooth 0.93 / hard
+   1.06) and picks the SHORTEST club whose adjusted carry still covers estPlays; if nothing reaches,
+   the longest club (a "won't get there" read line is a separate, planned change). Option A: the pick
+   tracks the current swing, so the recommended club and the on-screen "max" agree. Fixes both the
+   recommended club and the "I'd go ___" voice (both read recClub). Pre-existing bug — TARGET TRUTH
+   (0.25.0) only fixed the distance READ to the uncapped target, never the club PICK.
+   Prev SETUP READOUT (0.30.0).
    SETUP READOUT (0.30.0, minor) — read-only course-setup indicator (note 11, option A):
    • A "Course Setup" card in the LEFT dock surfaces only what's REAL and consumed today:
      CONDITIONS.firmness (course-wide, 0=soft..1=firm) + per-green CONDITIONS.stimp (set per hole
@@ -873,10 +892,19 @@ function caddieLensRead(snap, cad){
   // confidence: difficulty × (1−skill) on the read axes (provisional, uncalibrated).
   const d=snap.difficulty, gPY=1-cad.playingYards, gSG=1-cad.shortGame;
   const conf=clamp(1-((d.wind||0)*gPY+(d.elevation||0)*gPY+(d.lie||0)*gSG), 0.2, 0.99);
-  // generic club pick (NO rapport/golfer-fit — closest baseCarry to the estimate).
-  let rec=snap.bag[0]; for(const b of snap.bag){ if(Math.abs(b.baseCarry-estPlays)<Math.abs(rec.baseCarry-estPlays))rec=b; }
+  // CLUB COVER: club to COVER the number from THIS lie — not the closest nominal carry. baseCarry is
+  // the clean-lie carry; scale by the CURRENT lie + swing (same factors resolution uses, option A) so
+  // the pick matches what the club will actually do now. Shortest club whose adjusted carry reaches
+  // estPlays; if none reaches, the longest (a "won't get there" read line is a separate change).
+  const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
+  const _swF=(swing==='smooth'?0.93:swing==='hard'?1.06:1.0);
+  const _eff=b=>b.baseCarry*_lieF*_swF;
+  let rec=null;
+  for(const b of snap.bag){ if(_eff(b)>=estPlays && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest that reaches
+  if(rec===null){ rec=snap.bag[0]; for(const b of snap.bag){ if(b.baseCarry>rec.baseCarry) rec=b; } }    // nothing reaches → longest
   return { estPlays, base, estWind, estElev, estLie, windPct, liePct, elevPct,
-           confidence:conf, recClub:rec.club, recCarry:rec.baseCarry };
+           confidence:conf, recClub:rec.club, recCarry:rec.baseCarry,
+           reaches:_eff(rec)>=estPlays, recEff:_eff(rec) };   // CANT REACH: does the chosen club cover the number?
 }
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
@@ -1965,6 +1993,18 @@ function caddieRead(){
   const confPct=Math.round(r.confidence*100);
   const confTag = r.confidence<0.55 ? `<span style="color:#c98b5a">not fully sure (${confPct}%) — tricky read</span>` : `confidence ${confPct}%`;
   let s=`<div style="color:var(--gold-lt);font-size:11px;letter-spacing:.04em;margin-bottom:3px">${cad.name} · ${cad.tier}</div>`;
+  // CANT REACH: when no club covers the number FROM THIS LIE and the player is actually going for the
+  // green (explicit target near the green — not a fresh tee defaulting its aim at the pin, and not a
+  // fairway lay-up spot they can already reach), the caddie flips to an advance/lay-up read instead of
+  // naming a club that falls short. Mirror of PUNCH OUT. Gate avoids false "lay up" on long tee shots.
+  const aimNearGreen = !!target && Math.hypot(target.x-GREEN.cx, target.y-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+28;
+  if(!r.reaches && aimNearGreen){
+    const eff=Math.round(r.recEff), leaves=Math.max(0,Math.round(r.estPlays-r.recEff));
+    s+=`<b style="color:#d4582f">Can't reach — ~${est}y</b>`;
+    s+=`<br><span style="color:var(--muted)">${first}: “${body}Nothing covers this from here — ${lbl} is the most I've got, about ${eff}y. Advance it${leaves?`, leaves ~${leaves}y`:''}, then wedge close.”</span>`;
+    s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
+    return s;
+  }
   s+=`<b style="color:#7bc26a">Plays ~${est}y</b>`;
   s+=`<br><span style="color:var(--muted)">${first}: “${body}I’d go ${lbl}.”</span>`;
   s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
@@ -2225,8 +2265,8 @@ function init(){const sel=document.getElementById('club');
   ['verstamp','verstamp2'].forEach(id=>{const e=document.getElementById(id);if(e)e.textContent=VERSION;});
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');}
 init();
-/* golf-sim 0.30.0 — end */
+/* golf-sim 0.31.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.30.0 -->
+<!-- golf-sim 0.31.0 -->
