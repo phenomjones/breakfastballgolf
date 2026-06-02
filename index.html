@@ -1,4 +1,4 @@
-<!-- golf-sim 0.35.0 -->
+<!-- golf-sim 0.38.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -126,7 +126,7 @@
 <div class="wrap">
   <!-- LEFT DOCK: reference (identity, score, attributes, bag, scorecard) -->
   <div class="dock left">
-    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.35.0</span></div></div>
+    <div class="panel-h"><div class="logo">LINKS<b>.</b></div><div class="sub">Career Golf — <span id="verstamp">0.38.0</span></div></div>
     <div class="panel"><div class="scroll">
       <!-- DECK SHUFFLE: order = Score → Hole → Scorecard → Yardage Book → Cover Numbers → Layups → Your Bag → Golfer Attributes → Course Setup. All collapsible, default open. -->
       <details class="sec" open><summary>Score</summary>
@@ -175,7 +175,7 @@
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
     <button id="zoomtoggle" style="position:absolute;top:12px;right:14px;z-index:6;background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.5);color:var(--gold-lt);font:600 11px Outfit;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer">&#8854; zoom out</button>
-    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.35.0</span></div></div>
+    <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.38.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
 
@@ -223,7 +223,70 @@
   </div>
 </div>
 <script>
-const VERSION='0.35.0';  /* SemVer.
+const VERSION='0.38.0';  /* SemVer.
+   PIN STRATEGY (0.38.0, minor) — the caddie's approach read gained a green landing/feed plan (#9a).
+     New greenPlan() reads the snapshot's green slope at the pin (fallToMe = back-to-front strength,
+     cross = left/right feed), the pin's front→back depth on the approach axis, a PROVISIONAL receptivity
+     from firmness+stimp (D3: recept=clamp(1−(firm−.5)·1.4−(stimp−11)·.05)), and the player's spinGen.
+     Composes a headline (pin-depth × slope) + spin/receptivity/feed modifiers: front pin on a back-to-
+     front green → "land it past, let it feed back, never short-side below"; back pin → "club up, slope
+     holds it, don't be short"; firm/releaser → use the ground; high-spin → fly at it. ADVISORY TEXT ONLY
+     (D1) — never moves the recommended aim; you decide. Specificity scales with greenReading tier (D2):
+     Elite names a spot + the feed direction, Competent gives direction only. Snapshot-grounded (Kit's
+     rule); green slope is still the engine oracle (lensing the green = separate debt). Fires only on
+     green-bound approaches (skipped on layups / unreachable). Receptivity provisional until WEATHER STATION.
+   Prev SOFT HANDS (0.37.1).
+   SOFT HANDS (0.37.1, patch) — mishit/dispersion retune (playtest: "too many mishits for a pro").
+     Mishit rate: 0.015 + 0.09(1−strike) + {rough .04, bunker .08} + {divot .08}
+              →   0.004 + 0.06(1−strike) + {rough .03, bunker .06} + {divot .04}.
+     Tour Pro (strike .78) now mishits fairway 1.7% / rough 4.7% / bunker 7.3% / divot 5.7% (was
+     3.5 / 7.5 / 11.5 / 11.5). Penalty (carry ×0.6–0.82) unchanged — a real mishit costs distance,
+     just rarer now. Swing dispersion split: sDisp (lateral, hard=1.34) keeps the spray/risk-reward
+     teeth; new sDispD (distance, hard=1.18, smooth 0.85) is gentler — a pro's distance control degrades
+     less than direction on a hard swing. Lateral σ uses sDisp; distance σ now uses sDispD. All PROVISIONAL
+     (Dr. Priya owns the real fit against logged ShotResults).
+   Prev READ NOT TRUTH (0.37.0).
+   READ NOT TRUTH (0.37.0, minor) — the map's aim tooltip distance was the only place a RAW geometric
+     number reached the player unlabeled ("click anywhere, get exact yards"). It now shows the active
+     caddie's LENSED read of the aim point (tag 'pin' when aiming at the flag, so it agrees with the
+     "Caddy to pin" chip; tag 'aim' elsewhere). The "(max)" reachability is now the caddie's read of your
+     carry ("you carry ~Xy"); HONEST MAX (the raw "(max NNN)") is dropped. presentYds reconciled: every
+     caddie read carries '~' (provenance), a bare integer with no '~' is reserved for SURVEYED truth
+     (front/back, rings); confidence rides on granularity (precise→rounded→range), per-caddie voice still
+     differentiates HOW they hedge — not via tilde-presence. Ripple (intended): the shared presentYds
+     change tilde's EVERY caddie number (HUD chip, Score 'Caddy's read' #topin, COVER READ To Pin / Cover
+     Numbers / Layups), finally making COVER READ's To Pin (read) visibly distinct from its bare surveyed
+     front/back. Yardage rings left as the survey layer (D2=A): skill lives in the lens + tier aids +
+     future familiarity, not the tape measure. Lens is deterministic (stable hash by caddie|tag|distance
+     bucket) → tooltip varies smoothly, no flicker.
+   Prev OPTICS BATCH (0.36.0).
+   OPTICS BATCH (0.36.0, minor) = STILL FRAME + TIERED AIDS. Two playtest-driven presentation changes.
+   STILL FRAME (#7) — reverses 0.34 FORWARD FRAME's hold-wide behavior. The post-shot view no longer
+     pops out to the whole-hole overview for 5s; the ball already flew within the prior (forward) frame,
+     so scheduleForwardZoom now just zooms straight to the remaining shot. FWD_HOLD_MS/fwdTimer retired
+     from the path (cancelForwardZoom kept, now a no-op guard). Manual zoom toggle unchanged.
+   TIERED AIDS (#B) — pre-shot visual aids scale with caddie tier (lens-as-mechanic; hiring an Elite
+     caddie is now visibly worth it). ELITE: precise landing ellipse (1σ/2σ) + rollout tail / release
+     band (full prediction). COMPETENT: a basic spread cone only (direction + ~2σ scatter), no precise
+     footprint and no rollout/release call. Aim hint text adapts per tier. Post-shot ACTUAL tracer is
+     unchanged for both — that's feedback on what the ball did, not a pre-shot prediction. Gated on tier
+     today; can grade continuously as more caddies are added.
+   Prev TRUTH BATCH (0.35.1).
+   TRUTH BATCH (0.35.1, patch) = BURIED TRUTH + BAIL SIDE. Two confirmed playtest bugs.
+   BURIED TRUTH (bug+model) — a buried/sand/divot lie used to widen scatter (qPen) but NOT cut mean
+     carry, and the caddie's reach estimate was lie-QUALITY-blind (only surface 0.84 rough / 0.66 sand).
+     So from buried rough at 125y it said "hit 8i" while the shot realistically went ~90. New QCARRY
+     factor (buried 0.62 / sand 0.80 / divot 0.86 / tight 0.97 / clean·fluffy 1.0) folds into maxCarry
+     (shotPlan) AND the rec's _eff (caddieLensRead) from one place; intended/resolve inherit it (no
+     double-count — eff=intended/maxCarry cancels). Now a buried lie systematically comes up short AND
+     the rec flips to the advance/punch-out voice (CANT REACH) instead of recommending an unreachable club.
+     LIE LEGAL also extended: woods + hybrid are illegal out of a buried lie (you extract with a lofted club),
+     so the rec falls to the longest legal iron — which from a buried 125y lie can't get home → advance.
+   BAIL SIDE (bug) — the water miss line was a vague "whatever you do, not toward the water" (a caddie
+     would never say that). New _waterBailPhrase(): water centroid vs the pin in the ball→pin frame →
+     "bail right — the water sits left of the flag" / short / long. Sign convention verified in-harness
+     against Saxon 8 (lake left → bail right). bunker/default miss lines unchanged.
+   Prev DOCK REWORK BATCH (0.35.0).
    DOCK REWORK BATCH (0.35.0, minor) = DECK SHUFFLE + COVER READ.
    DECK SHUFFLE (layout) — left dock restructured into collapsible <details class="sec"> sections
      (summary styled like the old .sec-t; default open; caret rotates). New order: Score → Hole →
@@ -500,6 +563,14 @@ function clubSpeed(a,cid){const c=club(cid)[2],D=club('D')[2],S=club('7i')[2],P=
   const t=(S-P)?Math.max(0,(c-P)/(S-P)):0;return a.pitchingWedge+(a.sevenIron-a.pitchingWedge)*t;}
 const speedMult=cid=>clubSpeed(golfer.ballSpeed,cid)/clubSpeed(SPEED_BASELINE,cid);
 const carryOf=cid=>club(cid)[2]*speedMult(cid);
+/* BURIED TRUTH (0.35.1): lie-QUALITY mean-carry factor — DISTINCT from qPen (~line 1227), which only
+   widens scatter. A buried/divot lie loses distance SYSTEMATICALLY (you advance it, you don't flush it),
+   so this shortens the cap, the caddie's reach estimate, AND the resolved shot from ONE place: it folds
+   into maxCarry (shotPlan) and the rec's _eff (caddieLensRead), and model()/resolve inherit it via the
+   now-lower `intended`. No double-count (eff = intended/maxCarry cancels it). fluffy flies (flyer handled
+   separately) → neutral. Reads the live currentLie at call time. Provisional (Dr. Volk / Dr. Priya). */
+const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.86, sand:0.80, buried:0.62};
+const qCarryNow=()=>QCARRY[currentLie&&currentLie.quality]||1;
 /* ---------- REAL METRICS (SILVER TALON) — real units → engine scalars ----------
    Convert the real golfer inputs into the scalars the resolution formulas consume,
    calibrated so the `pro` preset reproduces tour-realistic dispersion. Anchors:
@@ -997,9 +1068,10 @@ function forwardFrame(){
 }
 function cancelForwardZoom(){ if(fwdTimer){clearTimeout(fwdTimer);fwdTimer=null;} }
 function scheduleForwardZoom(){
+  // STILL FRAME: no overview pop. The ball already flew in the prior (forward) frame, so the landing
+  // was visible; now just zoom straight to what's left. Manual toggle still flips forward⟷overview.
   cancelForwardZoom();
-  viewMode='overview'; setView(true); updateZoomBtn();                 // show the ball land in context
-  fwdTimer=setTimeout(()=>{ fwdTimer=null; viewMode='forward'; setView(true); updateZoomBtn(); }, FWD_HOLD_MS);
+  viewMode='forward'; setView(true); updateZoomBtn();
 }
 function toggleZoom(){ cancelForwardZoom(); viewMode=(viewMode==='overview'?'forward':'overview'); setView(true); updateZoomBtn(); }
 function updateZoomBtn(){ const b=document.getElementById('zoomtoggle'); if(b) b.textContent=(viewMode==='overview'?'⊕ zoom in':'⊖ zoom out'); }
@@ -1080,15 +1152,20 @@ function caddieEstimate(trueVal,dist,elevDelta,cad,tag,skillKey){
   return { est:trueVal+lean, spread };
 }
 function presentYds(est,spread,style){                                       // per-caddie precision tracks uncertainty
+  // READ NOT TRUTH: every caddie read carries '~' (provenance: '~' = a read; a bare integer with no
+  // '~' is reserved for SURVEYED truth — front/back, rings). Confidence now rides on GRANULARITY, not
+  // on tilde-presence: confident → precise, soft → rounded, very unsure → range. Per-caddie voice still
+  // differentiates HOW they hedge (Denny 'bare' rounds & never ranges = blunt; Marisol 'mix'/'range'
+  // brackets when unsure), just not via the tilde anymore.
   const v=Math.round(est), lvl = spread>5?2 : spread>2.5?1 : 0;              // 0 confident · 1 soft · 2 uncertain
-  const range=()=>{const h=Math.max(1,Math.round(spread));return (v-h)+'–'+(v+h);};
-  if(lvl===0) return v+'y';
+  const h=Math.max(1,Math.round(spread));
+  const range=()=> (v-h)+'–'+(v+h);
   switch(style){
-    case 'bare':  return (lvl>=1?Math.round(v/5)*5:v)+'y';
-    case 'tilde': return '~'+(lvl>=2?Math.round(v/5)*5:v)+'y';
-    case 'range': return range()+'y';
-    case 'mix':   return (lvl>=2?range():'~'+v)+'y';
-    default:      return v+'y';
+    case 'range': return '~'+range()+'y';                                    // always brackets
+    case 'mix':   return '~'+(lvl>=2?range():(lvl>=1?Math.round(v/5)*5:v))+'y';  // precise→rounded→range
+    case 'bare':                                                             // blunt: precise, rounds when unsure, never ranges
+    case 'tilde':
+    default:      return '~'+(lvl>=1?Math.round(v/5)*5:v)+'y';
   }
 }
 function yEst(trueVal,dist,elevDelta,tag,skillKey){                           // estimate + present for the ACTIVE caddie
@@ -1119,10 +1196,14 @@ function caddieLensRead(snap, cad){
   // actually PLAY from the lie. Driver is tee-only (no driver off the deck); fairway woods aren't
   // playable from sand. baseCarry × current lie × swing (option A); shortest LEGAL club that reaches
   // estPlays, else the longest LEGAL club (→ an advance read when even that can't reach — CANT REACH).
-  const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
+  const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1)*qCarryNow();   // BURIED TRUTH: surface × lie-QUALITY → an honest reach estimate (buried/sand can't get home)
   const _swF=(swing==='smooth'?0.93:swing==='hard'?1.06:1.0);
   const _eff=b=>b.baseCarry*_lieF*_swF;
-  const _legal=cid => cid==='D' ? lie==='tee' : ((cid==='3W'||cid==='5W') ? lie!=='bunker' : true);
+  const _buried=(currentLie&&currentLie.quality==='buried');   // BURIED TRUTH: no woods/hybrid out of a buried lie — you extract with a lofted club
+  const _legal=cid => cid==='D' ? lie==='tee'
+                    : (cid==='3W'||cid==='5W') ? (lie!=='bunker' && !_buried)
+                    : cid==='H' ? !_buried
+                    : true;
   let _pool=snap.bag.filter(b=>_legal(b.club)); if(!_pool.length)_pool=snap.bag;   // safety: irons are always legal
   let rec=null;
   for(const b of _pool){ if(_eff(b)>=estPlays && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest legal that reaches
@@ -1162,10 +1243,11 @@ function shotPlan(){
   const c=club(cid);
   const finesse=aroundGreen||(tgtDist<=60&&['fairway','rough','fringe','bunker','tee'].includes(lie));
   const sMul=swing==='smooth'?0.93:swing==='hard'?1.06:1.0;
-  const sDisp=swing==='smooth'?0.82:swing==='hard'?1.34:1.0;
-  let maxCarry=carryOf(cid)*sMul*({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1);
+  const sDisp=swing==='smooth'?0.82:swing==='hard'?1.34:1.0;     // LATERAL spread — hard keeps its spray (risk/reward teeth)
+  const sDispD=swing==='smooth'?0.85:swing==='hard'?1.18:1.0;    // SOFT HANDS: DISTANCE spread softer than lateral (a pro's distance control degrades less than direction on a hard swing)
+  let maxCarry=carryOf(cid)*sMul*({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1)*qCarryNow();   // BURIED TRUTH: lie QUALITY caps the reachable carry too (intended/resolve inherit it)
   const intended=Math.min(tgtDist,maxCarry);
-  return{isPutt:false,finesse,aroundGreen,ang,tgtDist,intended,maxCarry,club:c,cid,sMul,sDisp,capped:tgtDist>maxCarry+1};
+  return{isPutt:false,finesse,aroundGreen,ang,tgtDist,intended,maxCarry,club:c,cid,sMul,sDisp,sDispD,capped:tgtDist>maxCarry+1};
 }
 // PLAYS TRUE: the elev/wind/lie playing-yardage terms, extracted to ONE pure pre-shot
 // function consumed by BOTH resolveShot (below) AND buildSnapshot — so the caddy's number
@@ -1229,7 +1311,7 @@ function model(plan){
   const lat=Math.max(0.5, plan.intended*(LATCURVE[cid]||0.05)*latSkill*plan.sDisp*latLieM*compF*partial*windF*qPen*stancePen*fight*highPen);
   let distCoef=(golfer.dispersion.distance/DIST_REF)*(1-0.5*(golfer.strike-0.78));   // strike tightens distance σ
   distCoef=Math.max(0.004,distCoef);
-  const dist=Math.max(1, plan.intended*distCoef*CLUBLEN[cid]*plan.sDisp*distLieM*partial*windF*qPen*highPen);
+  const dist=Math.max(1, plan.intended*distCoef*CLUBLEN[cid]*plan.sDispD*distLieM*partial*windF*qPen*highPen);   // SOFT HANDS: sDispD (gentler distance axis), not sDisp
   return{carry,rollF,apex,curve,lat,dist,canHigh,agRoll,
     land:{x:ball.x+Math.cos(plan.ang)*carry,y:ball.y+Math.sin(plan.ang)*carry}};
 }
@@ -1242,7 +1324,7 @@ function resolveShot(){
   if(plan.isPutt){resolvePutt(plan);return;}
   const m=model(plan),cid=plan.cid;
   let carry=m.carry+gauss()*m.dist, latOff=gauss()*m.lat, note='', flyer=false;
-  const mishitP=0.015+(1-golfer.strike)*0.09+({rough:0.04,bunker:0.08}[lie]||0)+(currentLie.quality==='divot'?0.08:0);   // REAL METRICS: strike (flush vs catchy) drives mishits
+  const mishitP=0.004+(1-golfer.strike)*0.06+({rough:0.03,bunker:0.06}[lie]||0)+(currentLie.quality==='divot'?0.04:0);   // SOFT HANDS: retuned toward tour reality (was 0.015 + 0.09(1−strike) + 0.04/0.08 + 0.08 divot)
   if(Math.random()<mishitP){carry*=0.6+Math.random()*0.22;latOff*=1.8;note='Mishit. ';}
   // TRUE SPEED: the carry attributable to BALL SPEED — captured after dispersion + mishit
   // (both are speed/strike effects) but BEFORE flyer (a spin effect, not speed), wind, and
@@ -1475,7 +1557,7 @@ function finishSettle(rest,note){
   }
   const narr=(note||'')+(extra||commentate(lie));log(yds+narr);flash(narr);
   driftWind();   // STEADY BREEZE: gentle per-stroke evolution (between shots → read & resolve share one wind)
-  aiming=true;target=null;sync();scheduleForwardZoom();   // FORWARD FRAME: hold wide, then zoom to what's left
+  aiming=true;target=null;sync();scheduleForwardZoom();   // STILL FRAME: zoom straight to what's left (no overview pop)
 }
 function backOut(from,to){for(let t=0.95;t>0;t-=0.05){const x=from.x+(to.x-from.x)*t,y=from.y+(to.y-from.y)*t,l=lieAt(x,y);
   if(l!=='water'&&l!=='ob')return{x,y};}return{...from};}
@@ -1865,39 +1947,65 @@ function drawAim(sx,sy,sc){
     ctx.font='600 10px JetBrains Mono';ctx.fillStyle='rgba(224,162,74,.95)';
     ctx.fillText('go High / shape around',hx+9,hy+11);
     return;}
-  // landing ellipse (1σ + 2σ), oriented along the line
-  [[2,'rgba(217,179,76,.10)'],[1,'rgba(217,179,76,.24)']].forEach(([k,col])=>{
-    ctx.save();ctx.translate(sx(lp.x),sy(lp.y));ctx.rotate(-plan.ang);
-    ctx.beginPath();ctx.ellipse(0,0,m.dist*k*sc,m.lat*k*sc,0,0,7);ctx.fillStyle=col;ctx.fill();ctx.restore();});
-  ctx.strokeStyle='#d9b34c';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx(lp.x),sy(lp.y),5,0,7);ctx.stroke();
-  // roll segment → rest
-  const landLie=lieAt(lp.x,lp.y), nearG=['green','fringe'].includes(landLie)||Math.hypot(lp.x-GREEN.cx,lp.y-GREEN.cy)<GREEN.rx+6;
-  let rex,rey;
-  if(plan.aroundGreen){ // JADE LANTERN preview: roll out the remaining intended distance
-    const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
-    const gs=greenSlopeAt(lp.x,lp.y), slopeAlong=Math.cos(plan.ang-gs.dir)*gs.pct;   // TRUE BREAK: grid at landing (estimate)
-    let roll=Math.max(0,m.agRoll)*agGrip*(1+slopeAlong*4);
-    const cs=Math.sin(plan.ang-gs.dir)*gs.pct;
-    rex=lp.x+cosA*roll+px*roll*cs*2.2; rey=lp.y+sinA*roll+py*roll*cs*2.2;}
-  else if(nearG){const relY=(3+SPIN[cid]*15)*0.6*TRAJ[traj].roll, gs=greenSlopeAt(lp.x,lp.y);
-    rex=lp.x+cosA*relY*0.42+Math.cos(gs.dir)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(gs.dir)*relY*0.7;}
-  else{const gr={fairway:1,tee:1,rough:0.45,bunker:0.3}[landLie]??0.7;
-    const roll=m.carry*(ROLLBASE[cid]||.04)*m.rollF*gr; rex=lp.x+cosA*roll; rey=lp.y+sinA*roll;}
-  if(plan.aroundGreen){
-    // SOFT HANDS: short shots show a LAND zone (the dispersion ellipse above), not a precise rest dot.
-    // A better short-game caddie also shows an APPROXIMATE, never-exact RELEASE band toward the pin —
-    // width shrinks with the caddie's short-game skill.
-    const sg=clamp(caddie().shortGame,0,1);
-    if(sg>0.5){ const n=6, base=Math.hypot(rex-lp.x,rey-lp.y)*(1.15-sg)+1.5;
-      ctx.fillStyle='rgba(123,194,106,.12)';
-      for(let i=1;i<=n;i++){const t=i/n,mx=lp.x+(rex-lp.x)*t,my=lp.y+(rey-lp.y)*t,rr=Math.max(2,(1.4+base*0.45)*sc);
-        ctx.beginPath();ctx.ellipse(sx(mx),sy(my),rr,rr,0,0,7);ctx.fill();} }
+  // TIERED AIDS: the precise landing footprint + rollout/release prediction are ELITE-tier reads.
+  // A Competent caddie gives only a basic spread cone — direction + rough scatter, no rollout call.
+  // (Gated on tier today; could grade continuously as more caddies are added.) Post-shot actual tracer
+  // is unchanged for both tiers — that's feedback on what the ball did, not a pre-shot prediction.
+  const eliteAids = caddie().tier==='Elite';
+  if(eliteAids){
+    // landing ellipse (1σ + 2σ), oriented along the line
+    [[2,'rgba(217,179,76,.10)'],[1,'rgba(217,179,76,.24)']].forEach(([k,col])=>{
+      ctx.save();ctx.translate(sx(lp.x),sy(lp.y));ctx.rotate(-plan.ang);
+      ctx.beginPath();ctx.ellipse(0,0,m.dist*k*sc,m.lat*k*sc,0,0,7);ctx.fillStyle=col;ctx.fill();ctx.restore();});
+    ctx.strokeStyle='#d9b34c';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx(lp.x),sy(lp.y),5,0,7);ctx.stroke();
   } else {
-    ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(sx(rex),sy(rey));ctx.stroke();
-    ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(sx(rex),sy(rey),3.5,0,7);ctx.fill();
+    // basic spread cone: ball → ±2σ lateral at the landing point. No precise footprint, no rollout.
+    const cw=m.lat*2;
+    ctx.fillStyle='rgba(217,179,76,.12)';
+    ctx.beginPath();ctx.moveTo(sx(ball.x),sy(ball.y));
+    ctx.lineTo(sx(lp.x+px*cw),sy(lp.y+py*cw));ctx.lineTo(sx(lp.x-px*cw),sy(lp.y-py*cw));
+    ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(217,179,76,.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.arc(sx(lp.x),sy(lp.y),4,0,7);ctx.stroke();ctx.setLineDash([]);
   }
-  // distance label
-  const lbl=Math.round(plan.tgtDist)+'y'+(plan.capped?' (max '+Math.round(plan.maxCarry)+')':'');
+  // roll segment → rest — TIERED AIDS: rollout/release prediction is Elite-only
+  if(eliteAids){
+    const landLie=lieAt(lp.x,lp.y), nearG=['green','fringe'].includes(landLie)||Math.hypot(lp.x-GREEN.cx,lp.y-GREEN.cy)<GREEN.rx+6;
+    let rex,rey;
+    if(plan.aroundGreen){ // JADE LANTERN preview: roll out the remaining intended distance
+      const agGrip=({fairway:1,tee:1,fringe:1,green:1.05,rough:0.82,bunker:0.72})[landLie]??0.9;
+      const gs=greenSlopeAt(lp.x,lp.y), slopeAlong=Math.cos(plan.ang-gs.dir)*gs.pct;   // TRUE BREAK: grid at landing (estimate)
+      let roll=Math.max(0,m.agRoll)*agGrip*(1+slopeAlong*4);
+      const cs=Math.sin(plan.ang-gs.dir)*gs.pct;
+      rex=lp.x+cosA*roll+px*roll*cs*2.2; rey=lp.y+sinA*roll+py*roll*cs*2.2;}
+    else if(nearG){const relY=(3+SPIN[cid]*15)*0.6*TRAJ[traj].roll, gs=greenSlopeAt(lp.x,lp.y);
+      rex=lp.x+cosA*relY*0.42+Math.cos(gs.dir)*relY*0.7; rey=lp.y+sinA*relY*0.42+Math.sin(gs.dir)*relY*0.7;}
+    else{const gr={fairway:1,tee:1,rough:0.45,bunker:0.3}[landLie]??0.7;
+      const roll=m.carry*(ROLLBASE[cid]||.04)*m.rollF*gr; rex=lp.x+cosA*roll; rey=lp.y+sinA*roll;}
+    if(plan.aroundGreen){
+      // SOFT HANDS: short shots show a LAND zone (the dispersion ellipse above), not a precise rest dot.
+      // A better short-game caddie also shows an APPROXIMATE, never-exact RELEASE band toward the pin —
+      // width shrinks with the caddie's short-game skill.
+      const sg=clamp(caddie().shortGame,0,1);
+      if(sg>0.5){ const n=6, base=Math.hypot(rex-lp.x,rey-lp.y)*(1.15-sg)+1.5;
+        ctx.fillStyle='rgba(123,194,106,.12)';
+        for(let i=1;i<=n;i++){const t=i/n,mx=lp.x+(rex-lp.x)*t,my=lp.y+(rey-lp.y)*t,rr=Math.max(2,(1.4+base*0.45)*sc);
+          ctx.beginPath();ctx.ellipse(sx(mx),sy(my),rr,rr,0,0,7);ctx.fill();} }
+    } else {
+      ctx.strokeStyle='rgba(255,255,255,.5)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(sx(lp.x),sy(lp.y));ctx.lineTo(sx(rex),sy(rey));ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(sx(rex),sy(rey),3.5,0,7);ctx.fill();
+    }
+  }
+  // distance label — READ NOT TRUTH: the caddie's READ of the aim point, never the raw tape measure.
+  // tag 'pin' when aiming at the flag → agrees with the "Caddy to pin" chip. The '(max)' reach is the
+  // caddie's read of your carry. Both carry '~' (provenance). HONEST MAX (raw "(max NNN)") dropped.
+  const cad=caddie();
+  const aimX=target?target.x:(ball.x+cosA*plan.tgtDist), aimY=target?target.y:(ball.y+sinA*plan.tgtDist);
+  const aimElev=elev(aimX,aimY)-elev(ball.x,ball.y);
+  const aimIsPin=!target||Math.hypot(aimX-PIN.x,aimY-PIN.y)<2;
+  const aimEst=yEst(plan.tgtDist,plan.tgtDist,aimElev,aimIsPin?'pin':'aim');
+  let lbl=aimEst.txt;
+  if(plan.capped) lbl+=' (you carry '+presentYds(plan.maxCarry,(1-cad.playingYards)*8,(cad.voice&&cad.voice.numbers)||'bare')+')';
   ctx.font='700 12px JetBrains Mono';const tw=ctx.measureText(lbl).width;
   ctx.fillStyle='rgba(8,16,11,.8)';ctx.fillRect(sx(lp.x)+9,sy(lp.y)-9,tw+10,18);
   ctx.fillStyle=plan.capped?'#e0a24a':'#d9b34c';ctx.fillText(lbl,sx(lp.x)+14,sy(lp.y)+3.5);
@@ -2133,7 +2241,7 @@ function sync(){
   document.getElementById('strokes').textContent=strokes;
   const rel=strokes-PAR;
   document.getElementById('rel').textContent=holed?(rel===0?'E':(rel>0?'+'+rel:rel)):(strokes?'·':'E');
-  document.getElementById('topin').textContent=holed?'—':(onG?toPin:Math.round(pinRead.est));
+  document.getElementById('topin').textContent=holed?'—':(onG?toPin:'~'+Math.round(pinRead.est));   // READ NOT TRUTH: '~' marks the read; bare = survey
   const lieName={tee:'Tee',fairway:'Fairway',rough:'Rough',bunker:'Bunker',green:'Green',fringe:'Fringe',hole:'Holed'}[lie]||lie;
   document.getElementById('lietag').textContent=lieName;
   document.getElementById('hud').innerHTML=
@@ -2160,7 +2268,7 @@ function sync(){
   hit.textContent=isPutt?'Putt':'Hit Shot';
   hit.classList.toggle('putt',isPutt);hit.disabled=holed;
   document.getElementById('aimhint').textContent=holed?'Hole complete — start a new attempt below.':
-    (putting?'▸ Pick a pace — the line is read for you. Then putt.':'▸ Click the course to aim. Curve = shape; white tail = roll-out.');
+    (putting?'▸ Pick a pace — the line is read for you. Then putt.':('▸ Click the course to aim. Curve = shape; '+(caddie().tier==='Elite'?'white tail = roll-out.':'cone = rough spread — '+caddie().name.split(' ')[0]+" won't call the roll-out.")));
   document.getElementById('caddie').innerHTML=caddieRead();
   drawLie();drawGreenView();
   buildBag();
@@ -2189,6 +2297,72 @@ function paceNote(pace,sol){
   if(pace==='charge')return `firm — finishes ~${pastFt} ft past, takes the break out; testy one back if it slips by`;
   if(pace==='lag')return `get-it-close — centers on the hole (leaves it within ~${Math.max(1,Math.round(sol.D*0.3))} ft either way); sometimes drops`;
   return `make speed — finishes ~${pastFt} ft past, gives the hole its best chance`;
+}
+function _waterBailPhrase(){
+  // BAIL SIDE: name the safe side instead of a vague "not toward the water". Water centroid relative
+  // to the pin, projected onto the ball→pin frame: dominant component decides short / long / a side.
+  // Sign convention verified empirically (harness: Saxon 8 lake is left → "bail right").
+  const ws=HOLE.hazards.filter(h=>h.type==='water'&&h.polygon);
+  if(!ws.length) return 'keep it away from the water';
+  // near-pin water only: a lake running the whole hole has its centroid far back — for THIS shot only
+  // the greenside portion matters. Fall back to the full polygon if nothing sits near the pin.
+  let cx=0,cy=0,n=0;
+  for(const w of ws) for(const [x,y] of w.polygon){ if(Math.hypot(x-PIN.x,y-PIN.y)<=70){cx+=x;cy+=y;n++;} }
+  if(!n){ for(const w of ws) for(const [x,y] of w.polygon){cx+=x;cy+=y;n++;} }
+  cx/=n; cy/=n;
+  const dxp=PIN.x-ball.x, dyp=PIN.y-ball.y, L=Math.hypot(dxp,dyp)||1;
+  const ux=dxp/L, uy=dyp/L;                 // ball→pin unit
+  const rx=uy, ry=-ux;                      // rightward perpendicular (math frame; verified vs course)
+  const wx=cx-PIN.x, wy=cy-PIN.y;           // pin→water
+  const lon=wx*ux+wy*uy;                    // + = water beyond the pin (long)
+  const lat=wx*rx+wy*ry;                    // + = water right of the line
+  if(Math.abs(lat)>=Math.abs(lon)) return lat>0 ? 'bail left — the water sits right of the flag'
+                                                 : 'bail right — the water sits left of the flag';
+  return lon<0 ? "take enough club — there's water short, don't leave it there"
+               : "don't fly it — the water's long, club down";
+}
+function greenPlan(snap, cad){
+  // PIN STRATEGY: advisory landing/feed read for a green-bound approach. Snapshot-only (green slope at
+  // the pin, pin depth, provisional receptivity, player spinGen). ADVISORY TEXT ONLY (D1) — never moves
+  // the recommended aim; you decide. Specificity scales with greenReading tier (D2): Elite names a spot
+  // + the feed; Competent gives direction only. Green read is still the engine oracle (separate debt) —
+  // here the TRUE slope is surfaced; lensing the green is a later task.
+  const gr=snap.greenRead; if(!gr||gr.slopePctAtPin==null) return '';
+  const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
+  const fallToMe=-Math.cos(gr.slopeDirAtPin-angPin)*gr.slopePctAtPin;   // + = back-to-front (falls toward you)
+  const cross   = Math.sin(gr.slopeDirAtPin-angPin)*gr.slopePctAtPin;   // signed cross feed (sign verified in-harness)
+  // pin depth: front(0) → back(1) projected on the approach axis
+  const e=_greenEdges(); let depth=0.5;
+  if(e){ const ex=e.back.x-e.front.x, ey=e.back.y-e.front.y, fb=ex*ex+ey*ey||1;
+    depth=Math.max(0,Math.min(1, ((PIN.x-e.front.x)*ex+(PIN.y-e.front.y)*ey)/fb )); }
+  // provisional receptivity (D3): firmer + faster ⇒ releases more. ~0.5 at the current flat 0.55 firmness.
+  const firm=snap.conditions.firmness!=null?snap.conditions.firmness:0.55;
+  const stimp=gr.speedStimp!=null?gr.speedStimp:11;
+  const recept=Math.max(0,Math.min(1, 1-(firm-0.5)*1.4-(stimp-11)*0.05));   // 1 = holds · 0 = releases
+  const sg=(snap.golfer&&snap.golfer.spinGen!=null)?snap.golfer.spinGen:0.7;
+  const elite=cad.tier==='Elite';
+  const FRONT=depth<0.38, BACK=depth>0.62, B2F=fallToMe>0.012, AWAY=fallToMe<-0.012;
+  const feed=Math.abs(cross)>0.012 ? (cross>0?'left':'right') : null;   // sign verified in-harness: downhill-left feeds left
+  const feedClause=(feed&&elite)?` — it'll feed ${feed} toward the flag`:'';
+  const aggressive = recept>0.6 && sg>0.8, releaser = recept<0.45 || sg<0.62;
+  let head;
+  if(AWAY){
+    head=elite?'green runs away from you — land it short and let it release; flying it deep leaves a downhill nightmare':"land it short, it'll run on";
+  } else if(B2F){
+    if(FRONT){
+      if(aggressive) head=elite?'you can fly this front flag and spin it, or land a couple past and let it trickle back':'go at it, you can stop it';
+      else if(releaser) head=elite?"this front pin won't hold — land it hole-high and let the slope feed it back, but never short-side below the hole":'land it past the flag, not short — below this hole is dead';
+      else head=elite?'land it hole-high to a few past and let it feed back — short-siding below is the dead miss':'favor past the flag, never short';
+    } else if(BACK){
+      head=elite?"club up to this back pin — the slope holds it and an uphill putt back is fine; just don't come up short of the green":"plenty of club, the slope holds it — don't be short";
+    } else {
+      head=elite?'back-to-front green — favor pin-high; short feeds away and leaves an awkward one, an uphill putt is the play':"it's back-to-front — be pin-high, not short";
+    }
+  } else {
+    if(releaser) head=elite?'firm green — land it short of the number and let it chase up':'land it short, let it run';
+    else head=elite?'fairly flat here — go at the fat of the green':'go at the middle';
+  }
+  return head+feedClause;
 }
 function caddieRead(){
   if(holed)return '<span style="color:var(--gold-lt)">Nicely done.</span>';
@@ -2286,7 +2460,7 @@ function caddieRead(){
     if(swing==='smooth') return 'nice and smooth';
     return ''; })();
   const guards = (PIN.guardedBy||[]);
-  const miss = guards.includes('water') ? 'whatever you do, not toward the water'
+  const miss = guards.includes('water') ? _waterBailPhrase()
              : guards.includes('bunker') ? 'miss away from the bunker, not at the flag'
              : 'favor the fat of the green';
   const aimNearGreen = !!target && Math.hypot(target.x-GREEN.cx, target.y-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+28;
@@ -2311,6 +2485,10 @@ function caddieRead(){
   else if(!thorough) q += ' '+cap(miss)+'.';
   if(thorough) q += ' '+cap(miss)+'.';
   s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
+  // PIN STRATEGY: green-bound approach → append the advisory landing/feed plan (not for layups).
+  const goingForGreen = Math.hypot((target?target.x:PIN.x)-GREEN.cx,(target?target.y:PIN.y)-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+15;
+  const gp = goingForGreen ? greenPlan(snap,cad) : '';
+  if(gp) s+=`<br><span style="color:#7bc26a;font-size:11px">Green: ${gp}.</span>`;
   s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
   return s;
 }
@@ -2659,8 +2837,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.35.0 — end */
+/* golf-sim 0.38.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.35.0 -->
+<!-- golf-sim 0.38.0 -->
