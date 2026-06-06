@@ -1,4 +1,4 @@
-<!-- golf-sim 0.38.0 -->
+<!-- golf-sim 0.38.1 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,29 @@
   </div>
 </div>
 <script>
-const VERSION='0.38.0';  /* SemVer.
+const VERSION='0.38.1';  /* SemVer.
+   AMBER THISTLE BATCH (0.38.1, patch) = CHOP OUT + STEADY READ + COPPER OWL. Three confirmed
+     credibility/stability bugs in the caddie read/rec; no new feature, no schema touch.
+   CHOP OUT (bug+realism) — buried-lie carry was double-counted: QCARRY.buried (0.62) folded into the
+     caddie estimate, but the resolver still applied a legacy `if(buried)carry*=0.7` on TOP → the ball
+     went ~0.43 while the estimate saw only 0.62 (over-promised 108 vs an actual ~75 from a 4i). Fix:
+     collapse to one factor — QCARRY.buried 0.62→0.43, remove the resolver ×0.7 (estimate now matches the
+     shot). Also LIE LEGAL extended: long irons (4i/5i) barred from BURIED (dig/smother), and woods +
+     hybrid + long irons all barred from a DIVOT lie (need a descending strike) — rec falls to a lofted
+     chop-out, CANT REACH when nothing legal gets home. (Did NOT touch QCARRY.divot — that's GN-8, separate.)
+   STEADY READ (bug, state) — the read drifted with the SELECTED club: buildSnapshot computed playsTrue
+     via playingTerms(..., ptCid = selected club), so the club's WINDEXP shifted estPlays and, near a club
+     boundary, changing the dropdown flipped the rec (the "switch to 3W → rec follows" bug). Fix: anchor
+     the read to a distance-derived reference club (new refClubFor — full-swing club whose player-scaled
+     carry is closest to the target distance). The read is now stable vs selection; the selected club still
+     drives the actual shot + landing preview. Isolated to ptCid in buildSnapshot.
+   COPPER OWL (bug, safety) — PIN STRATEGY could advise "land it short / let it release" at a pin with
+     water short of it (Saxon 2 front-left), i.e. tell you to lay up into the hazard — advice no real
+     caddie gives. Fix: new _waterShortOfPin() (reuses BAIL SIDE near-pin centroid + ball→pin projection;
+     greenside water only, no full-polygon fallback) vetoes the land-short clause in the runaway-green and
+     firm/releaser branches, substituting "carry it onto the surface". ADVISORY ONLY — does not move the
+     club rec. This is the SAFETY SUBSET of GN-5's deferred D1 (green-character-drives-the-club) fork.
+   Prev PIN STRATEGY (0.38.0).
    PIN STRATEGY (0.38.0, minor) — the caddie's approach read gained a green landing/feed plan (#9a).
      New greenPlan() reads the snapshot's green slope at the pin (fallToMe = back-to-front strength,
      cross = left/right feed), the pin's front→back depth on the approach axis, a PROVISIONAL receptivity
@@ -563,13 +585,19 @@ function clubSpeed(a,cid){const c=club(cid)[2],D=club('D')[2],S=club('7i')[2],P=
   const t=(S-P)?Math.max(0,(c-P)/(S-P)):0;return a.pitchingWedge+(a.sevenIron-a.pitchingWedge)*t;}
 const speedMult=cid=>clubSpeed(golfer.ballSpeed,cid)/clubSpeed(SPEED_BASELINE,cid);
 const carryOf=cid=>club(cid)[2]*speedMult(cid);
+// STEADY READ: the caddie READ anchors to a distance-derived reference club (full-swing club whose
+// player-scaled carry is closest to the target distance), NOT the selected dropdown club. This keeps
+// the read/rec stable when you change clubs (the old `ptCid = selected club` let the club's WINDEXP
+// shift estPlays near a boundary → the "switch to 3W and the rec follows" bug). The SELECTED club still
+// drives the actual shot + landing preview via resolveShot — only the read is anchored here.
+const refClubFor=d=>{let best='7i',bd=Infinity;for(const c of CLUBS){if(c[0]==='P')continue;const diff=Math.abs(carryOf(c[0])-d);if(diff<bd){bd=diff;best=c[0];}}return best;};
 /* BURIED TRUTH (0.35.1): lie-QUALITY mean-carry factor — DISTINCT from qPen (~line 1227), which only
    widens scatter. A buried/divot lie loses distance SYSTEMATICALLY (you advance it, you don't flush it),
    so this shortens the cap, the caddie's reach estimate, AND the resolved shot from ONE place: it folds
    into maxCarry (shotPlan) and the rec's _eff (caddieLensRead), and model()/resolve inherit it via the
    now-lower `intended`. No double-count (eff = intended/maxCarry cancels it). fluffy flies (flyer handled
    separately) → neutral. Reads the live currentLie at call time. Provisional (Dr. Volk / Dr. Priya). */
-const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.86, sand:0.80, buried:0.62};
+const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.86, sand:0.80, buried:0.43};   // CHOP OUT: buried 0.62→0.43 — single carry factor; the legacy resolver ×0.7 is removed so estimate and shot agree (~75 from a 4i, not a promised 108)
 const qCarryNow=()=>QCARRY[currentLie&&currentLie.quality]||1;
 /* ---------- REAL METRICS (SILVER TALON) — real units → engine scalars ----------
    Convert the real golfer inputs into the scalars the resolution formulas consume,
@@ -1199,10 +1227,16 @@ function caddieLensRead(snap, cad){
   const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1)*qCarryNow();   // BURIED TRUTH: surface × lie-QUALITY → an honest reach estimate (buried/sand can't get home)
   const _swF=(swing==='smooth'?0.93:swing==='hard'?1.06:1.0);
   const _eff=b=>b.baseCarry*_lieF*_swF;
-  const _buried=(currentLie&&currentLie.quality==='buried');   // BURIED TRUTH: no woods/hybrid out of a buried lie — you extract with a lofted club
+  const _buried=(currentLie&&currentLie.quality==='buried');
+  const _divot =(currentLie&&currentLie.quality==='divot');
+  const _badLie=_buried||_divot;   // CHOP OUT: both buried and divot demand a lofted, descending strike — extract, don't sweep
+  // CHOP OUT: from a bad lie (buried/divot) you extract with loft. Woods + hybrid can't take the
+  // descending blow; long irons (4i/5i) dig/smother from buried and can't pick clean from a divot.
+  // The rec falls to the longest legal club ≤6i → a lofted chop-out (and CANT REACH if it can't get home).
   const _legal=cid => cid==='D' ? lie==='tee'
-                    : (cid==='3W'||cid==='5W') ? (lie!=='bunker' && !_buried)
-                    : cid==='H' ? !_buried
+                    : (cid==='3W'||cid==='5W') ? (lie!=='bunker' && !_badLie)
+                    : cid==='H' ? !_badLie
+                    : (cid==='4i'||cid==='5i') ? !_badLie
                     : true;
   let _pool=snap.bag.filter(b=>_legal(b.club)); if(!_pool.length)_pool=snap.bag;   // safety: irons are always legal
   let rec=null;
@@ -1337,7 +1371,7 @@ function resolveShot(){
   // the OPPOSITE (clubhead slowed → knuckleball, less distance — handled just below).
   const flyP={'6i':.28,'7i':.30,'8i':.30,'9i':.26,PW:.22,'5i':.18,'4i':.12,H:.10,GW:.10,'5W':.06,SW:.05,'3W':.04,LW:.03,D:0}[cid]??.12;
   if(currentLie.quality==='fluffy'&&Math.random()<flyP){carry*=1.08+Math.random()*0.12;flyer=true;note+='Flyer! ';}
-  if(currentLie.quality==='buried')carry*=0.7;
+  // CHOP OUT: legacy `if(buried)carry*=0.7` removed — buried distance loss now lives solely in QCARRY.buried (0.43), folded into intended via maxCarry, so the shot no longer double-counts it.
   carry=Math.max(carry,3);
   // wind drift — PLAYS TRUE: along/cross/windYds now come from the shared pre-shot fn (same math)
   const PT=playingTerms(plan.ang, plan.intended, traj, cid);
@@ -2321,6 +2355,23 @@ function _waterBailPhrase(){
   return lon<0 ? "take enough club — there's water short, don't leave it there"
                : "don't fly it — the water's long, club down";
 }
+// COPPER OWL: true when GREENSIDE water sits short of the pin on the approach axis — the signal that
+// any "land it short / let it release" advice would be telling the player to land in the water. Reuses
+// the BAIL SIDE near-pin centroid (≤70 of the pin) and its ball→pin projection; unlike BAIL SIDE it does
+// NOT fall back to the full polygon, so a lake whose mass is far back never triggers a false veto.
+// This is the safety subset of GN-5's Option 1 — advisory only, it does not move the club rec.
+function _waterShortOfPin(){
+  const ws=HOLE.hazards.filter(h=>h.type==='water'&&h.polygon);
+  if(!ws.length) return false;
+  let cx=0,cy=0,n=0;
+  for(const w of ws) for(const [x,y] of w.polygon){ if(Math.hypot(x-PIN.x,y-PIN.y)<=70){cx+=x;cy+=y;n++;} }
+  if(!n) return false;                       // no greenside water → nothing to veto
+  cx/=n; cy/=n;
+  const dxp=PIN.x-ball.x, dyp=PIN.y-ball.y, L=Math.hypot(dxp,dyp)||1;
+  const ux=dxp/L, uy=dyp/L;
+  const lon=(cx-PIN.x)*ux+(cy-PIN.y)*uy;     // + = beyond the pin (long) · − = short of the pin
+  return lon < -3;                           // water sits short of the flag → landing short flirts with it
+}
 function greenPlan(snap, cad){
   // PIN STRATEGY: advisory landing/feed read for a green-bound approach. Snapshot-only (green slope at
   // the pin, pin depth, provisional receptivity, player spinGen). ADVISORY TEXT ONLY (D1) — never moves
@@ -2345,9 +2396,12 @@ function greenPlan(snap, cad){
   const feed=Math.abs(cross)>0.012 ? (cross>0?'left':'right') : null;   // sign verified in-harness: downhill-left feeds left
   const feedClause=(feed&&elite)?` — it'll feed ${feed} toward the flag`:'';
   const aggressive = recept>0.6 && sg>0.8, releaser = recept<0.45 || sg<0.62;
+  const waterShort=_waterShortOfPin();   // COPPER OWL: water short of the pin vetoes any "land it short" advice — a caddie never tells you to lay it into the hazard
   let head;
   if(AWAY){
-    head=elite?'green runs away from you — land it short and let it release; flying it deep leaves a downhill nightmare':"land it short, it'll run on";
+    head = waterShort
+      ? (elite?'green runs away, but water guards the front — you can\'t bail short here; carry it onto the front of the surface and take the downhill putt':'water short — fly it on, don\'t lay up short')
+      : (elite?'green runs away from you — land it short and let it release; flying it deep leaves a downhill nightmare':"land it short, it'll run on");
   } else if(B2F){
     if(FRONT){
       if(aggressive) head=elite?'you can fly this front flag and spin it, or land a couple past and let it trickle back':'go at it, you can stop it';
@@ -2359,7 +2413,9 @@ function greenPlan(snap, cad){
       head=elite?'back-to-front green — favor pin-high; short feeds away and leaves an awkward one, an uphill putt is the play':"it's back-to-front — be pin-high, not short";
     }
   } else {
-    if(releaser) head=elite?'firm green — land it short of the number and let it chase up':'land it short, let it run';
+    if(releaser) head = waterShort
+      ? (elite?'firm green, but water guards the front — carry it all the way onto the surface, don\'t chase it up from short':'water short — land it on, not short')
+      : (elite?'firm green — land it short of the number and let it chase up':'land it short, let it run');
     else head=elite?'fairly flat here — go at the fat of the green':'go at the middle';
   }
   return head+feedClause;
@@ -2707,14 +2763,14 @@ function buildSnapshot(){
   const angAim=Math.atan2(aimY-ball.y,aimX-ball.x);
   const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
   const distGeom=Math.hypot(PIN.x-ball.x,PIN.y-ball.y);
-  let cid=(document.getElementById('club')||{}).value||'7i'; if(cid==='P')cid='7i';
   // TARGET TRUTH: the READ goes to the TARGET (uncapped distance to the aim point / pin), so the
   // caddie answers "what does the pin play to + what club" instead of confirming whatever club is
   // selected. PEWTER OTTER's capped `intended` still governs shot RESOLUTION (resolveShot) — two
   // different questions: advise to the target, resolve the actual swing.
   const plan=(typeof shotPlan==='function')?shotPlan():null;
-  let ptAng=angPin, ptInt=distGeom, ptCid=cid;
-  if(plan && !plan.isPutt){ ptAng=plan.ang; ptInt=plan.tgtDist; ptCid=plan.cid; }   // tgtDist (uncapped), not intended
+  let ptAng=angPin, ptInt=distGeom;
+  if(plan && !plan.isPutt){ ptAng=plan.ang; ptInt=plan.tgtDist; }   // tgtDist (uncapped), not intended
+  const ptCid=refClubFor(ptInt);   // STEADY READ: read anchored to a distance-derived reference club, NOT the selected dropdown — the read no longer drifts when you change clubs near a boundary
   const pt=(lie==='green')?null:playingTerms(ptAng,ptInt,traj,ptCid);   // no aerial terms on the green
   const gread=snapGreenRead();
   return {
@@ -2837,8 +2893,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.38.0 — end */
+/* golf-sim 0.38.1 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.38.0 -->
+<!-- golf-sim 0.38.1 -->
