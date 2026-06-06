@@ -1,4 +1,4 @@
-<!-- golf-sim 0.38.1 -->
+<!-- golf-sim 0.38.3 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,30 @@
   </div>
 </div>
 <script>
-const VERSION='0.38.1';  /* SemVer.
+const VERSION='0.38.3';  /* SemVer.
+   DRIFT MEADOW BATCH (0.38.3, patch) = HAZY LANTERN + SLACK TIDE. Read/aids polish. (GN-1 verified
+     already resolved by the difficulty×(1−skill) confidence formula — closed, no change.)
+   HAZY LANTERN (GN-2) — the Competent pre-shot aid read as a precise aim "beam." Restyled in drawAim:
+     Competent now gets a faint dotted direction trail (vs Elite's crisp carry line) + a FUZZY scatter cone
+     (nested low-alpha bands fading to a feathered dashed boundary, no precise centerline/marker) instead
+     of the old crisp filled triangle. Reads as "somewhere in here." Elite ellipse + rollout untouched.
+     Canvas-only; visual verification is eyeball-only.
+   SLACK TIDE (GN-4) — CLUB COVER had no tolerance: a ~4y shortfall forced a full club up. Added COVER_TOL
+     (=4y, PROVISIONAL — Dr. Priya owns the real value): a club qualifies if it reaches within the band, and
+     the `reaches`/advance verdict uses the same band so a within-tolerance pick isn't called unreachable.
+     Stops the caddie over-clubbing to cover a couple of yards.
+   Prev DUSK QUARRY BATCH (0.38.2).
+   DUSK QUARRY BATCH (0.38.2, patch) = GLASS HERON + PEWTER VANE. Lie-honesty pass on the caddie read.
+   GLASS HERON (GN-7) — the spoken read now always voices the lie QUALITY + its effect, not just the
+     surface. Previously only `buried` was acknowledged (via the recovery branch). New tier-scaled clause
+     in caddieRead: fluffy → FLYER warning (was silent; flies long/hot), divot → lower-and-hotter/less-spin,
+     tight → clean-contact/no-cushion, sand (reachable fairway bunker) → ball-first/extra club. Elite names
+     the effect; Competent is blunt. The flyer line also fires in the recovery/advance branch (a flyer can
+     blow an advance long). Grounded in the visible lie (Kit's rule); advisory only — never moves the rec.
+   PEWTER VANE (GN-8) — QCARRY.divot 0.86→0.90 (~14%→10% carry loss). Hale: 7–10% is realistic; the
+     control/flight penalty already lives in qPen.divot (dispersion), so the carry factor was double-charging.
+     One constant. (CHOP OUT in 0.38.1 deliberately left divot alone for this.)
+   Prev AMBER THISTLE BATCH (0.38.1).
    AMBER THISTLE BATCH (0.38.1, patch) = CHOP OUT + STEADY READ + COPPER OWL. Three confirmed
      credibility/stability bugs in the caddie read/rec; no new feature, no schema touch.
    CHOP OUT (bug+realism) — buried-lie carry was double-counted: QCARRY.buried (0.62) folded into the
@@ -597,7 +620,7 @@ const refClubFor=d=>{let best='7i',bd=Infinity;for(const c of CLUBS){if(c[0]==='
    into maxCarry (shotPlan) and the rec's _eff (caddieLensRead), and model()/resolve inherit it via the
    now-lower `intended`. No double-count (eff = intended/maxCarry cancels it). fluffy flies (flyer handled
    separately) → neutral. Reads the live currentLie at call time. Provisional (Dr. Volk / Dr. Priya). */
-const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.86, sand:0.80, buried:0.43};   // CHOP OUT: buried 0.62→0.43 — single carry factor; the legacy resolver ×0.7 is removed so estimate and shot agree (~75 from a 4i, not a promised 108)
+const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.90, sand:0.80, buried:0.43};   // CHOP OUT: buried 0.62→0.43 (single factor; resolver ×0.7 removed). PEWTER VANE: divot 0.86→0.90 (~14%→10%) — the control/flight hit already lives in qPen.divot (dispersion), so carry was double-charging.
 const qCarryNow=()=>QCARRY[currentLie&&currentLie.quality]||1;
 /* ---------- REAL METRICS (SILVER TALON) — real units → engine scalars ----------
    Convert the real golfer inputs into the scalars the resolution formulas consume,
@@ -1240,11 +1263,16 @@ function caddieLensRead(snap, cad){
                     : true;
   let _pool=snap.bag.filter(b=>_legal(b.club)); if(!_pool.length)_pool=snap.bag;   // safety: irons are always legal
   let rec=null;
-  for(const b of _pool){ if(_eff(b)>=estPlays && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest legal that reaches
+  // SLACK TIDE (GN-4): a "good enough" tolerance — a club qualifies if it reaches WITHIN COVER_TOL of the
+  // estimate, so the caddie stops clubbing up a full club to cover a ~4y shortfall (real players accept
+  // pin-high ± a few yards). PROVISIONAL flat band; Dr. Priya (Statistician) owns the real number (could
+  // be a fraction of the inter-club gap). `reaches` below still uses the strict ≥ for the advance verdict.
+  const COVER_TOL=4;
+  for(const b of _pool){ if(_eff(b)>=estPlays-COVER_TOL && (rec===null||b.baseCarry<rec.baseCarry)) rec=b; }   // shortest legal within tolerance
   if(rec===null){ rec=_pool[0]; for(const b of _pool){ if(b.baseCarry>rec.baseCarry) rec=b; } }        // nothing reaches → longest legal
   return { estPlays, base, estWind, estElev, estLie, windPct, liePct, elevPct,
            confidence:conf, recClub:rec.club, recCarry:rec.baseCarry,
-           reaches:_eff(rec)>=estPlays, recEff:_eff(rec) };   // reaches=false → advance (REAL CADDIE / CANT REACH)
+           reaches:_eff(rec)>=estPlays-COVER_TOL, recEff:_eff(rec) };   // SLACK TIDE: within-tolerance counts as reaching; only a real shortfall → advance (CANT REACH)
 }
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
@@ -1966,7 +1994,12 @@ function drawAim(sx,sy,sc){
   const hit=treeBlock(ball,lp,m.curve,m.apex);
   // curved carry path (bezier control offset by curve)
   const c1x=ball.x+dx*0.5+px*m.curve, c1y=ball.y+dy*0.5+py*m.curve;
-  ctx.strokeStyle=hit?'rgba(212,88,47,.9)':'rgba(217,179,76,.8)';ctx.lineWidth=2;ctx.setLineDash([6,5]);
+  const eliteAids = caddie().tier==='Elite';   // HAZY LANTERN: aids scale with tier (also gates cone vs ellipse below)
+  // HAZY LANTERN: Elite gets a crisp predicted carry line; Competent gets only a faint, airy trail so the
+  // pre-shot read never looks like a precise aim beam — the fuzzy scatter cone below carries the real info.
+  if(hit){ ctx.strokeStyle='rgba(212,88,47,.9)';ctx.lineWidth=2;ctx.setLineDash([6,5]); }
+  else if(eliteAids){ ctx.strokeStyle='rgba(217,179,76,.8)';ctx.lineWidth=2;ctx.setLineDash([6,5]); }
+  else { ctx.strokeStyle='rgba(217,179,76,.30)';ctx.lineWidth=1.1;ctx.setLineDash([2,7]); }   // Competent: faint dotted direction trail
   ctx.beginPath();ctx.moveTo(sx(ball.x),sy(ball.y));ctx.quadraticCurveTo(sx(c1x),sy(c1y),sx(lp.x),sy(lp.y));ctx.stroke();ctx.setLineDash([]);
   if(hit){
     const hx=sx(hit.x),hy=sy(hit.y),tx=sx(hit.bx),ty=sy(hit.by);
@@ -1985,7 +2018,6 @@ function drawAim(sx,sy,sc){
   // A Competent caddie gives only a basic spread cone — direction + rough scatter, no rollout call.
   // (Gated on tier today; could grade continuously as more caddies are added.) Post-shot actual tracer
   // is unchanged for both tiers — that's feedback on what the ball did, not a pre-shot prediction.
-  const eliteAids = caddie().tier==='Elite';
   if(eliteAids){
     // landing ellipse (1σ + 2σ), oriented along the line
     [[2,'rgba(217,179,76,.10)'],[1,'rgba(217,179,76,.24)']].forEach(([k,col])=>{
@@ -1993,13 +2025,22 @@ function drawAim(sx,sy,sc){
       ctx.beginPath();ctx.ellipse(0,0,m.dist*k*sc,m.lat*k*sc,0,0,7);ctx.fillStyle=col;ctx.fill();ctx.restore();});
     ctx.strokeStyle='#d9b34c';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx(lp.x),sy(lp.y),5,0,7);ctx.stroke();
   } else {
-    // basic spread cone: ball → ±2σ lateral at the landing point. No precise footprint, no rollout.
-    const cw=m.lat*2;
-    ctx.fillStyle='rgba(217,179,76,.12)';
-    ctx.beginPath();ctx.moveTo(sx(ball.x),sy(ball.y));
-    ctx.lineTo(sx(lp.x+px*cw),sy(lp.y+py*cw));ctx.lineTo(sx(lp.x-px*cw),sy(lp.y-py*cw));
-    ctx.closePath();ctx.fill();
-    ctx.strokeStyle='rgba(217,179,76,.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    // HAZY LANTERN: a fuzzy scatter region — deliberately NOT a crisp aim beam. Nested low-alpha cones
+    // (soft core fading to a barely-there edge) + dashed feathered boundary lines, no precise centerline.
+    // Reads as "somewhere in here," which is the honest Competent-tier read.
+    const drawCone=(k,fill)=>{const w=m.lat*k;ctx.fillStyle=fill;ctx.beginPath();
+      ctx.moveTo(sx(ball.x),sy(ball.y));
+      ctx.lineTo(sx(lp.x+px*w),sy(lp.y+py*w));ctx.lineTo(sx(lp.x-px*w),sy(lp.y-py*w));
+      ctx.closePath();ctx.fill();};
+    drawCone(2,'rgba(217,179,76,.05)');     // outer 2σ — barely there
+    drawCone(1.1,'rgba(217,179,76,.10)');   // soft core
+    const w2=m.lat*2;                        // feathered dashed boundary (edge of the scatter, not an aim line)
+    ctx.strokeStyle='rgba(217,179,76,.28)';ctx.lineWidth=1;ctx.setLineDash([3,6]);
+    ctx.beginPath();
+    ctx.moveTo(sx(ball.x),sy(ball.y));ctx.lineTo(sx(lp.x+px*w2),sy(lp.y+py*w2));
+    ctx.moveTo(sx(ball.x),sy(ball.y));ctx.lineTo(sx(lp.x-px*w2),sy(lp.y-py*w2));
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(217,179,76,.4)';ctx.lineWidth=1;ctx.setLineDash([3,4]);   // faint landing zone, no crisp marker
     ctx.beginPath();ctx.arc(sx(lp.x),sy(lp.y),4,0,7);ctx.stroke();ctx.setLineDash([]);
   }
   // roll segment → rest — TIERED AIDS: rollout/release prediction is Elite-only
@@ -2520,6 +2561,17 @@ function caddieRead(){
              : guards.includes('bunker') ? 'miss away from the bunker, not at the flag'
              : 'favor the fat of the green';
   const aimNearGreen = !!target && Math.hypot(target.x-GREEN.cx, target.y-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+28;
+  // GLASS HERON (GN-7): the caddie always voices the lie QUALITY + its effect, not just the surface.
+  // Grounded in the visible lie (Kit's rule — lie quality is local/observable, not hidden truth). The
+  // fluffy → FLYER warning was previously silent and is the high-value one (a flyer flies LONG). Tier
+  // scales specificity (Elite names the effect; Competent is blunt). Advisory only — never moves the rec.
+  const _lieQ = (currentLie&&currentLie.quality)||'clean';
+  const lieVoice =
+      _lieQ==='fluffy' ? (thorough?"it's sitting up — watch the flyer, it comes out hot and runs":"sitting up, could fly on you")
+    : _lieQ==='divot'  ? (thorough?"you're down in an old divot — it'll come off lower with less spin, so plan for the run":"in a divot, comes out low and hot")
+    : _lieQ==='tight'  ? (thorough?"tight lie, no cushion under it — clean ball-first contact or it scoots":"tight lie, nip it clean")
+    : (_lieQ==='sand'&&lie==='bunker') ? (thorough?"off the sand — catch it ball-first, I'd take the extra club":"off the sand, catch it clean")
+    : '';
   if(!r.reaches && (recovery || aimNearGreen)){
     s+=`<b style="color:#d4582f">${recovery?'Recovery':'Two-shotter'} · ~${est}y</b>`;
     let q;
@@ -2530,12 +2582,14 @@ function caddieRead(){
       q = `That's ${est} ${lieSit} — you won't get there in one. ${lbl} is all I've got, about ${effY}`+(leaves?`, leaves ~${leaves}`:'')+'.';
       q += thorough ? ' Move it down there and wedge close.' : ' Just advance it.';
     }
+    if(_lieQ==='fluffy') q+=' '+cap(lieVoice)+'.';   // GLASS HERON: a flyer can blow even an advance long into trouble
     s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
     s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
     return s;
   }
   s+=`<b style="color:#7bc26a">Plays ~${est}y</b>`;
   let q = `You're ${lieSit}, playing about ${est}.`;
+  if(lieVoice) q += ' '+cap(lieVoice)+'.';   // GLASS HERON: name the lie quality + effect
   q += (thorough && why) ? ` I'd go ${lbl} — ${why}.` : ` ${lbl}.`;
   if(reaction) q += ' '+cap(reaction)+'.';
   else if(!thorough) q += ' '+cap(miss)+'.';
@@ -2893,8 +2947,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.38.1 — end */
+/* golf-sim 0.38.3 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.38.1 -->
+<!-- golf-sim 0.38.3 -->
