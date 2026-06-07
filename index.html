@@ -1,4 +1,4 @@
-<!-- golf-sim 0.39.0 -->
+<!-- golf-sim 0.40.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -174,7 +174,7 @@
   <div class="stage">
     <canvas id="cv"></canvas>
     <div class="hud" id="hud"></div>
-    <button id="zoomtoggle" style="position:absolute;top:12px;right:14px;z-index:6;background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.5);color:var(--gold-lt);font:600 11px Outfit;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer">&#8854; zoom out</button>
+    <button id="zoomtoggle" style="position:absolute;top:12px;left:14px;z-index:6;background:rgba(8,16,11,.82);border:1px solid rgba(216,179,76,.5);color:var(--gold-lt);font:600 11px Outfit;letter-spacing:.04em;padding:5px 9px;border-radius:7px;cursor:pointer">&#8854; zoom out</button>
     <div class="titleplate"><div class="h"><span id="holetitle">Hole 7 · Par 4</span></div><div class="s"><span id="holesub">The Bend · 401 yds</span> · <span id="verstamp2">0.38.0</span></div></div>
     <div class="commentary" id="comm" style="opacity:0"></div>
   </div>
@@ -223,7 +223,37 @@
   </div>
 </div>
 <script>
-const VERSION='0.39.0';  /* SemVer.
+const VERSION='0.40.0';  /* SemVer.
+   TRUE CARRY (0.40.0, minor) — GN-17, the consequence keystone. The engine no longer fakes every club
+     onto the target. shotPlan previously set intended=min(tgtDist,maxCarry), so an over-clubbed driver
+     resolved to EXACTLY the pin distance — every club scored the same and club choice was inert (the
+     "boring click-click-click" playtest verdict). Now: a club asked to fly well under its natural carry
+     (eff=tgtDist/maxCarry below NAT_FLOOR=0.82) comes off HOT — expected carry biases LONG by
+     (NAT_FLOOR−eff)×maxCarry×HOT_K(0.35), strike-skill-reduced, capped at the club's full carry. The
+     over-clubbed shot lands long and the existing low-loft release table (SPIN: D high → runs) carries it
+     further through the green, so wrong club now flies/runs the green; under-clubbing is unchanged (honest
+     can't-reach cap → `capped`). Mean bias is NEW; the partial-swing dispersion blowup (model() eff term)
+     already existed and still rides. Caddie's spoken number still reads tgtDist (buildSnapshot untouched)
+     — consequence surfaces only through the ball's flight, never the read (no-oracle). Magnitudes
+     PROVISIONAL (Dr. Priya, Statistician): shape is the deliverable, numbers calibrate against logged
+     ShotResults; geometry is still illustrative and carry ~11% low vs Tour, so don't read the yardages
+     as final. First resolution change this arc — driven by a focused resolution harness (see below).
+   PLUMB LINE BATCH (0.39.1, patch) = CLEAN TEE + RUNAWAY READ + BELOW HOLE + TEE QUIET + CLEAR CROWN.
+     Five confirmed playtest bugs (read/voice/UI only; no engine or schema change).
+   CLEAN TEE (GN-9) — tee shots showed a phantom buried/divot lie (nonsense capped carry, e.g. 118/247):
+     lie='tee' is hardcoded at the tee-start sites but currentLie was sampled via lieAt(TEE), which returns
+     non-tee on some holes. captureLie now forces a clean, level lie when capturing at the tee point.
+   RUNAWAY READ (GN-16) — the runaway-green read had the putt backwards ("flying it deep leaves a downhill
+     nightmare"). On a green running away, deep = below the hole = UPHILL; short-and-above is the downhill
+     nightmare. Reworded.
+   BELOW HOLE (GN-13) — the back-to-front middle-pin read contradicted itself (favor pin-high / short feeds
+     away (bad) / uphill putt is the play (=short)). Reworded: pin-high to just below for the uphill putt,
+     avoid too-short (feeds away) and long (slick downhill above the hole).
+   TEE QUIET (GN-11) — the "favor the fat of the green" miss clause was ungated and fired on tee/long shots
+     far from the green. Now appended only when the shot is aimed at the green (aimNearGreen). The full
+     tee/driving read remains a deferred feature.
+   CLEAR CROWN (GN-18) — the zoom toggle and the hole titleplate were both pinned top-right and overlapped.
+     Moved the zoom toggle to the top-left of the stage.
    MISTED GREEN (0.39.0, minor) — the caddie's read of the green's STEEPNESS is now a fallible GUESS,
      not oracle truth. greenPlan applies the same multiplicative dial used for wind/lie/elevation,
      driven by greenReading skill × familiarity × greenHardness(snap) (new; rides difficulty.green).
@@ -1002,7 +1032,12 @@ function courseSlope(x,y){const d=2.5;
   return{gx:(elev(x+d,y)-elev(x-d,y))/(2*d), gy:(elev(x,y+d)-elev(x,y-d))/(2*d)};}
 // lie state captured when the ball comes to rest; along/cross computed live vs aim
 let currentLie={type:'tee',quality:'clean',gx:0,gy:0,steep:0};
-function captureLie(x,y){const t=lieAt(x,y);let g=courseSlope(x,y);
+function captureLie(x,y){
+  // CLEAN TEE (GN-9): a tee shot is clean by definition. The tee-start sites hardcode lie='tee' then call
+  // captureLie(TEE,...), but lieAt(TEE) returns non-tee on some holes → a phantom buried/divot lie and a
+  // nonsense capped carry. Force a clean, level lie when capturing AT the current tee point.
+  if(typeof TEE!=='undefined'&&TEE&&x===TEE.x&&y===TEE.y){currentLie={type:'tee',quality:'clean',gx:0,gy:0,steep:0};return;}
+  const t=lieAt(x,y);let g=courseSlope(x,y);
   let q='clean';
   if(t==='rough')q=Math.random()<0.42?'buried':'fluffy';
   else if(t==='bunker')q='sand';
@@ -1288,6 +1323,7 @@ function caddieLensRead(snap, cad){
 }
 const K_ALONG=4, K_CROSS=2.5;   // GROUND TRUTH: along-slope roll gain (uphill brakes / downhill runs) and cross-slope drift gain (toward the low side). On a 5% sideslope a 20y roll drifts ~2.5y. Anchors for Dr. Priya (Statistician) to tune.
 const BS_SIGMA=0.15, BS_TAIL=0.05;   // BOUNCE SCATTER: everyday rollout jitter 1σ (× firmness × surface) + rare tail-event probability (unexpected hard kick on firm / dead stop on soft). Systematic, not flat RNG. Anchors for Dr. Priya (Statistician).
+const NAT_FLOOR=0.82, HOT_K=0.35;   // TRUE CARRY (GN-17): NAT_FLOOR = the fraction of a club's full carry you can still throttle to CLEANLY (≈ a 3/4 swing). Ask a club to fly less than this (a big over-club) and the de-lofted partial swing comes off HOT — expected carry biases LONG by (NAT_FLOOR−eff)×maxCarry×HOT_K, strike-skill-reduced, never past full carry. This is what makes club choice a real decision again. PROVISIONAL magnitudes — shape is the point, numbers are Dr. Priya (Statistician)'s to calibrate against logged ShotResults.
 const SHAPES={draw:-1,straight:0,fade:1};
 // around-green shot types: carry fraction of total, apex, roll factor, club
 const STYPES={flop:{cf:0.9,apex:1.7,roll:0.25,club:'LW'},pitch:{cf:0.72,apex:1.15,roll:0.55,club:'SW'},
@@ -1320,7 +1356,22 @@ function shotPlan(){
   const sDisp=swing==='smooth'?0.82:swing==='hard'?1.34:1.0;     // LATERAL spread — hard keeps its spray (risk/reward teeth)
   const sDispD=swing==='smooth'?0.85:swing==='hard'?1.18:1.0;    // SOFT HANDS: DISTANCE spread softer than lateral (a pro's distance control degrades less than direction on a hard swing)
   let maxCarry=carryOf(cid)*sMul*({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1)*qCarryNow();   // BURIED TRUTH: lie QUALITY caps the reachable carry too (intended/resolve inherit it)
-  const intended=Math.min(tgtDist,maxCarry);
+  // TRUE CARRY (GN-17): the engine no longer fakes every club onto the target. A club asked to fly
+  // well under its natural carry (a big over-club) comes off HOT — a de-lofted partial swing can't be
+  // throttled cleanly, so EXPECTED carry biases LONG, scaled by how far below the club's comfortable
+  // window (NAT_FLOOR) the shot is and inversely by strike skill, never past the club's full carry.
+  // Under-clubbing is unchanged: a club that can't reach simply can't (honest cap → `capped`). The
+  // over-clubbed shot lands long AND the low-loft release table (SPIN) runs it further through the
+  // green — so wrong club finally hurts. The caddie's spoken number still reads tgtDist (buildSnapshot,
+  // untouched): consequence surfaces only through the ball's flight, never the read (no-oracle).
+  let intended;
+  if(tgtDist>=maxCarry){ intended=maxCarry; }                       // can't reach → honest under-club
+  else{
+    const eff=tgtDist/maxCarry;                                     // 1=full swing, low=big over-club
+    const over=Math.max(0,NAT_FLOOR-eff);                           // departure below the comfortable window
+    const skillF=Math.max(0.3,1-0.45*(golfer.strike-0.78));         // better strikers throttle cleaner
+    intended=Math.min(maxCarry, tgtDist + over*maxCarry*HOT_K*skillF);
+  }
   return{isPutt:false,finesse,aroundGreen,ang,tgtDist,intended,maxCarry,club:c,cid,sMul,sDisp,sDispD,capped:tgtDist>maxCarry+1};
 }
 // PLAYS TRUE: the elev/wind/lie playing-yardage terms, extracted to ONE pure pre-shot
@@ -2464,7 +2515,7 @@ function greenPlan(snap, cad){
   if(AWAY){
     head = waterShort
       ? (elite?'green runs away, but water guards the front — you can\'t bail short here; carry it onto the front of the surface and take the downhill putt':'water short — fly it on, don\'t lay up short')
-      : (elite?'green runs away from you — land it short and let it release; flying it deep leaves a downhill nightmare':"land it short, it'll run on");
+      : (elite?'green runs away from you — land it short and make sure it releases; past the hole is an easy uphill putt, but short and above it is the downhill nightmare':"land it short, it'll run on");
   } else if(B2F){
     if(FRONT){
       if(aggressive) head=elite?'you can fly this front flag and spin it, or land a couple past and let it trickle back':'go at it, you can stop it';
@@ -2473,7 +2524,7 @@ function greenPlan(snap, cad){
     } else if(BACK){
       head=elite?"club up to this back pin — the slope holds it and an uphill putt back is fine; just don't come up short of the green":"plenty of club, the slope holds it — don't be short";
     } else {
-      head=elite?'back-to-front green — favor pin-high; short feeds away and leaves an awkward one, an uphill putt is the play':"it's back-to-front — be pin-high, not short";
+      head=elite?'back-to-front green — pin-high to just below the hole for the uphill putt; too short feeds away from you, and long leaves a slick downhill one':"it's back-to-front — be pin-high, not short";
     }
   } else {
     if(releaser) head = waterShort
@@ -2614,8 +2665,8 @@ function caddieRead(){
   if(lieVoice) q += ' '+cap(lieVoice)+'.';   // GLASS HERON: name the lie quality + effect
   q += (thorough && why) ? ` I'd go ${lbl} — ${why}.` : ` ${lbl}.`;
   if(reaction) q += ' '+cap(reaction)+'.';
-  else if(!thorough) q += ' '+cap(miss)+'.';
-  if(thorough) q += ' '+cap(miss)+'.';
+  else if(!thorough && aimNearGreen) q += ' '+cap(miss)+'.';   // TEE QUIET (GN-11): green-miss only when aimed at the green
+  if(thorough && aimNearGreen) q += ' '+cap(miss)+'.';          // TEE QUIET: off the tee / long shots get no green-miss
   s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
   // PIN STRATEGY: green-bound approach → append the advisory landing/feed plan (not for layups).
   const goingForGreen = Math.hypot((target?target.x:PIN.x)-GREEN.cx,(target?target.y:PIN.y)-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+15;
@@ -2969,8 +3020,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.39.0 — end */
+/* golf-sim 0.40.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.39.0 -->
+<!-- golf-sim 0.40.0 -->
