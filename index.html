@@ -1,4 +1,4 @@
-<!-- golf-sim 0.38.3 -->
+<!-- golf-sim 0.39.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,16 @@
   </div>
 </div>
 <script>
-const VERSION='0.38.3';  /* SemVer.
+const VERSION='0.39.0';  /* SemVer.
+   MISTED GREEN (0.39.0, minor) — the caddie's read of the green's STEEPNESS is now a fallible GUESS,
+     not oracle truth. greenPlan applies the same multiplicative dial used for wind/lie/elevation,
+     driven by greenReading skill × familiarity × greenHardness(snap) (new; rides difficulty.green).
+     AMOUNT only: slopeDir stays TRUE, so fallToMe/cross scale together — the read can run too strong
+     or too mild, never wrong-way. TALK ONLY: the club rec never reads greenRead, so the recommended
+     club does NOT move (the green-drives-the-club unification = next piece, BRASS COMPASS). Snapshot
+     truth untouched (read-time lens). Putting read still oracle (separate debt). Error magnitudes
+     PROVISIONAL — Dr. Priya owns calibration; the magnitude term in difficulty.green may double-count
+     against the multiplicative dial and is a tuning candidate, not a correctness issue.
    DRIFT MEADOW BATCH (0.38.3, patch) = HAZY LANTERN + SLACK TIDE. Read/aids polish. (GN-1 verified
      already resolved by the difficulty×(1−skill) confidence formula — closed, no change.)
    HAZY LANTERN (GN-2) — the Competent pre-shot aid read as a precise aim "beam." Restyled in drawAim:
@@ -1184,6 +1193,9 @@ const PROVISIONAL_FAMILIARITY=0.5;
 // lie hardness rides the snapshot's provisional difficulty.lie. (caddie-lens §3, §4.)
 function windHardness(snap){ const sw=snap.conditions.wind.swirl; return 1+(sw!=null?sw:0)*0.8; }
 function lieHardness(snap){ return 1+(snap.difficulty.lie!=null?snap.difficulty.lie:0)*0.8; }
+// MISTED GREEN: green-read hardness rides the snapshot's provisional difficulty.green (slope
+// magnitude + complexity). Mirrors lie/windHardness. PROVISIONAL — Dr. Priya owns the real fit.
+function greenHardness(snap){ return 1+(snap.difficulty.green!=null?snap.difficulty.green:0)*0.8; }
 // the dial (caddie-lens §3): multiplicative, two-term lean, clamped ≥0 (§3.4 safeguard).
 function dial(skill, dir, hardness, familiarity, leanStrength){
   const skillGap=1-skill;
@@ -2417,12 +2429,22 @@ function greenPlan(snap, cad){
   // PIN STRATEGY: advisory landing/feed read for a green-bound approach. Snapshot-only (green slope at
   // the pin, pin depth, provisional receptivity, player spinGen). ADVISORY TEXT ONLY (D1) — never moves
   // the recommended aim; you decide. Specificity scales with greenReading tier (D2): Elite names a spot
-  // + the feed; Competent gives direction only. Green read is still the engine oracle (separate debt) —
-  // here the TRUE slope is surfaced; lensing the green is a later task.
+  // + the feed; Competent gives direction only. MISTED GREEN: the slope AMOUNT is now LENSED (a caddie
+  // guess), not oracle truth; the slope DIRECTION is still true (oracle) and the putting read is still
+  // oracle — both separate later debt.
   const gr=snap.greenRead; if(!gr||gr.slopePctAtPin==null) return '';
   const angPin=Math.atan2(PIN.y-ball.y,PIN.x-ball.x);
-  const fallToMe=-Math.cos(gr.slopeDirAtPin-angPin)*gr.slopePctAtPin;   // + = back-to-front (falls toward you)
-  const cross   = Math.sin(gr.slopeDirAtPin-angPin)*gr.slopePctAtPin;   // signed cross feed (sign verified in-harness)
+  // MISTED GREEN: the caddie GUESSES the green's steepness instead of knowing it — same fog (dial)
+  // already used for wind/lie/elevation, via greenReading skill × familiarity × greenHardness. AMOUNT
+  // only (Decision 1): slopeDir stays TRUE; only magnitude is lensed, so fallToMe and cross scale
+  // together — the read can run too strong or too mild, never wrong-way. Talk only: the club rec never
+  // reads greenRead, so this does NOT move the club (the unification is the next piece). Snapshot stays
+  // true — this is a read-time lens, not a mutation of stored truth.
+  const _gFam=cad.localKnowledge*(snap.courseFamiliarity!=null?snap.courseFamiliarity:PROVISIONAL_FAMILIARITY);
+  const _gDial=dial(cad.greenReading, cad.disposition.greenReading, greenHardness(snap), _gFam, cad.leanStrength);
+  const estSlope=gr.slopePctAtPin*_gDial;
+  const fallToMe=-Math.cos(gr.slopeDirAtPin-angPin)*estSlope;   // + = back-to-front (toward you) · MISTED GREEN: estimated steepness
+  const cross   = Math.sin(gr.slopeDirAtPin-angPin)*estSlope;   // signed cross feed · estimated magnitude, true direction
   // pin depth: front(0) → back(1) projected on the approach axis
   const e=_greenEdges(); let depth=0.5;
   if(e){ const ex=e.back.x-e.front.x, ey=e.back.y-e.front.y, fb=ex*ex+ey*ey||1;
@@ -2947,8 +2969,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.38.3 — end */
+/* golf-sim 0.39.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.38.3 -->
+<!-- golf-sim 0.39.0 -->
