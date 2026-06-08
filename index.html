@@ -1,4 +1,4 @@
-<!-- golf-sim 0.40.0 -->
+<!-- golf-sim 0.40.1 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,27 @@
   </div>
 </div>
 <script>
-const VERSION='0.40.0';  /* SemVer.
+const VERSION='0.40.1';  /* SemVer.
+   TRUE VOICE (0.40.1, patch) = STOCK READ + ONE NUMBER + DEEP LIE — three caddie read/voice fixes from
+     playtest. No engine or schema change (read-time voice only).
+   STOCK READ (#4) — the club rec was scaling every club's carry by the SWING multiplier (_swF) before
+     picking the shortest club that covers the number, so toggling 'hard' inflated all clubs ~6% and
+     silently downgraded the rec (Driver→3W). The rec now computes at a STOCK swing (_eff drops _swF);
+     the lie factor stays (it's a fact), swing does not (it's the player's separate choice, made after
+     the rec). The caddie still REACTS to a hard/smooth swing in voice.
+   ONE NUMBER (#1/#2, GN-12) — "Plays ~X" already bakes in wind+slope+elevation+lie, but the Elite voice
+     itemized it with imperatives ("knock 6% off", "costs you 10%") that read as a SECOND adjustment on
+     top of a number that already contained them. Now the wind/slope clauses are descriptive (not
+     imperative), and the assembly resolves to ONE all-in number: Elite SYNTHESIZES ("129 to the flag,
+     playing about 123 with everything in, mostly the helping breeze — that's your number"); Competent
+     HANDS THE PIECES (raw yardage + factors) and lets the player do the math. Header still shows the
+     caddie's number.
+   DEEP LIE (#7) — a buried lie was the only lie quality with no voice, so a plugged-lie recovery read as
+     "no chance of getting home from 107 with a 6-iron" (nonsense, because the plug was invisible). Added
+     the buried voice; the recovery read now attributes can't-reach to the lie ("you're plugged … chop it
+     out"). Also killed "favor the fat of the green" on the recovery branch — it's a LAYUP, not a green
+     attack (same bug class as TEE QUIET) — replaced with full-wedge layup advice (will consume
+     leaveNumber() once WEDGE LADDER lands; coupling decision: DEEP LIE shipped now, retrofits later).
    TRUE CARRY (0.40.0, minor) — GN-17, the consequence keystone. The engine no longer fakes every club
      onto the target. shotPlan previously set intended=min(tgtDist,maxCarry), so an over-clubbed driver
      resolved to EXACTLY the pin distance — every club scored the same and club choice was inert (the
@@ -1295,8 +1315,7 @@ function caddieLensRead(snap, cad){
   // playable from sand. baseCarry × current lie × swing (option A); shortest LEGAL club that reaches
   // estPlays, else the longest LEGAL club (→ an advance read when even that can't reach — CANT REACH).
   const _lieF=({tee:1,fairway:1,fringe:1,rough:0.84,bunker:0.66}[lie]||1)*qCarryNow();   // BURIED TRUTH: surface × lie-QUALITY → an honest reach estimate (buried/sand can't get home)
-  const _swF=(swing==='smooth'?0.93:swing==='hard'?1.06:1.0);
-  const _eff=b=>b.baseCarry*_lieF*_swF;
+  const _eff=b=>b.baseCarry*_lieF;   // STOCK READ (TRUE VOICE): rec computed at a STOCK swing — the swing toggle is the player's SEPARATE choice and must not re-pick the club. _swF previously inflated every club ~6% on a 'hard' swing, silently downgrading Driver→3W (and shrinking them on 'smooth'). Lie stays in (it's a fact about the shot); swing does not (it's a decision made AFTER the rec). The caddie still REACTS to a hard/smooth swing in voice (reaction clause); it just no longer re-recommends the club on it.
   const _buried=(currentLie&&currentLie.quality==='buried');
   const _divot =(currentLie&&currentLie.quality==='divot');
   const _badLie=_buried||_divot;   // CHOP OUT: both buried and divot demand a lofted, descending strike — extract, don't sweep
@@ -2589,12 +2608,15 @@ function caddieRead(){
   const clauses=[];
   // WIND — hurt/help + percentage (+ = plays longer = HURT / into it; − = HELP / downwind).
   const wp=Math.abs(r.windPct);
-  if(wp>=2){ const mag=wp<6?'a little':wp<12?'some':'a good chunk of';
-    clauses.push(r.windPct>0 ? `${mag} hurt — costs you about ${Math.round(wp)}%`
-                             : `${mag} help — knock about ${Math.round(wp)}% off`); }
+  // ONE NUMBER (TRUE VOICE, GN-12): descriptive, not imperative. The old "knock X% off" / "costs you X%"
+  // read as instructions to apply ON TOP of estPlays — but estPlays already contains the wind, so it was a
+  // double-count in the player's head. These are now plain factor descriptions, used only in the Competent
+  // "pieces" voice; the Elite synthesizes to one all-in number instead (see the assembly below).
+  if(wp>=2){ clauses.push(r.windPct>0 ? `into the breeze, ~${Math.round(wp)}%`
+                                      : `a helping breeze, ~${Math.round(wp)}%`); }
   // LIE / stance tilt — percentage (also scales with the shot).
   const lp=Math.abs(r.liePct);
-  if(lp>=2){ clauses.push(r.liePct>0?`the slope adds about ${Math.round(lp)}%`:`the slope gives back about ${Math.round(lp)}%`); }
+  if(lp>=2){ clauses.push(r.liePct>0?`the slope adding ~${Math.round(lp)}%`:`the slope helping ~${Math.round(lp)}%`); }
   // ELEVATION — PER-CADDIE phrasing (yards / clubs / %): caddies sound different, you find your fit.
   const ev=(cad.voice&&cad.voice.elev)||'yards', eAbs=Math.abs(r.estElev), up=r.estElev>0;
   if(eAbs>=2){
@@ -2640,7 +2662,8 @@ function caddieRead(){
   // scales specificity (Elite names the effect; Competent is blunt). Advisory only — never moves the rec.
   const _lieQ = (currentLie&&currentLie.quality)||'clean';
   const lieVoice =
-      _lieQ==='fluffy' ? (thorough?"it's sitting up — watch the flyer, it comes out hot and runs":"sitting up, could fly on you")
+      _lieQ==='buried' ? (thorough?"you're plugged — buried down in it, no full swing on this, all you can do is chop it out":"buried — just a chop-out")
+    : _lieQ==='fluffy' ? (thorough?"it's sitting up — watch the flyer, it comes out hot and runs":"sitting up, could fly on you")
     : _lieQ==='divot'  ? (thorough?"you're down in an old divot — it'll come off lower with less spin, so plan for the run":"in a divot, comes out low and hot")
     : _lieQ==='tight'  ? (thorough?"tight lie, no cushion under it — clean ball-first contact or it scoots":"tight lie, nip it clean")
     : (_lieQ==='sand'&&lie==='bunker') ? (thorough?"off the sand — catch it ball-first, I'd take the extra club":"off the sand, catch it clean")
@@ -2649,21 +2672,49 @@ function caddieRead(){
     s+=`<b style="color:#d4582f">${recovery?'Recovery':'Two-shotter'} · ~${est}y</b>`;
     let q;
     if(recovery){
-      q = `You're ${lieSit}, ${est} to the flag — no chance of getting home. ${lbl}, catch it clean and advance`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.';
-      q += thorough ? (' '+cap(miss)+`. Don't get greedy.`) : ' Keep it simple.';
+      // DEEP LIE (TRUE VOICE): when the LIE is what kills the shot (buried/divot), SAY so — that's the
+      // reason you can't get home from a reachable distance. Without it, "no chance from 107 with a 6i"
+      // reads as nonsense (the player can't see the plug in the read).
+      const plugged = (_lieQ==='buried'||_lieQ==='divot');
+      q = plugged
+        ? `You're ${lieSit} and ${_lieQ==='buried'?'buried down in it':'down in an old divot'} — ${est} to the flag, but no chance of getting home from a lie like this. ${lbl}, chop it out`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.'
+        : `You're ${lieSit}, ${est} to the flag — no chance of getting home. ${lbl}, catch it clean and advance`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.';
+      // DEEP LIE: this is a LAYUP, not a green attack — "favor the fat of the green" was firing here and
+      // is nonsense on a punch-out. Generic full-wedge advice for now; WEDGE LADDER will swap this for
+      // leaveNumber() (the ideal leave). The differentiation Sully wants lives in the number left.
+      q += thorough ? " Just get it back in play and leave yourself a full wedge — don't get greedy." : ' Keep it simple — get it out.';
     } else {
       q = `That's ${est} ${lieSit} — you won't get there in one. ${lbl} is all I've got, about ${effY}`+(leaves?`, leaves ~${leaves}`:'')+'.';
-      q += thorough ? ' Move it down there and wedge close.' : ' Just advance it.';
+      q += thorough ? ' Move it down there and leave yourself a full wedge in.' : ' Just advance it.';
     }
-    if(_lieQ==='fluffy') q+=' '+cap(lieVoice)+'.';   // GLASS HERON: a flyer can blow even an advance long into trouble
+    // DEEP LIE: a flyer can blow even an advance long; buried/divot are already inlined above as the reason.
+    if(_lieQ==='fluffy') q+=' '+cap(lieVoice)+'.';   // GLASS HERON
     s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
     s+=`<br><span style="color:var(--muted);font-size:11px">${confTag}</span>`;
     return s;
   }
   s+=`<b style="color:#7bc26a">Plays ~${est}y</b>`;
-  let q = `You're ${lieSit}, playing about ${est}.`;
-  if(lieVoice) q += ' '+cap(lieVoice)+'.';   // GLASS HERON: name the lie quality + effect
-  q += (thorough && why) ? ` I'd go ${lbl} — ${why}.` : ` ${lbl}.`;
+  // ONE NUMBER (TRUE VOICE, GN-12): the read resolves to ONE all-in number. estPlays already contains
+  // wind+slope+elevation+lie, so itemizing "knock X% off" on top double-counted in the player's head.
+  // Elite SYNTHESIZES — states the all-in number as THE number, reconciles it against the raw yardage,
+  // names the dominant factor in plain words (no % imperative). Competent HANDS THE PIECES — raw yardage
+  // + the descriptive factors — and lets the player do the math. Grounded in snapshot facts (Kit's rule).
+  const raw=Math.round(r.base), diff=Math.abs(raw-est)>=3;
+  const _facs=[{m:Math.abs(r.windPct),t:r.windPct>0?'into the breeze':'the helping breeze'},
+               {m:Math.abs(r.liePct), t:r.liePct>0?'the upslope':'the downslope'},
+               {m:Math.abs(r.elevPct),t:r.estElev>0?'the uphill':'the downhill'}].filter(f=>f.m>=2).sort((a,b)=>b.m-a.m);
+  const _reason=_facs.length?_facs[0].t:'';
+  let q;
+  if(thorough){
+    q = `You're ${lieSit}, `+(diff?`${raw} to the flag — playing about ${est} with everything in`+(_reason?`, mostly ${_reason}`:''):`playing about ${est}`)+'.';
+    if(lieVoice) q += ' '+cap(lieVoice)+'.';
+    q += ` That's your number — I'd go ${lbl}.`;
+  } else {
+    q = `You're ${lieSit}, ${raw} to the flag.`;
+    if(lieVoice) q += ' '+cap(lieVoice)+'.';
+    if(why) q += ' '+cap(why)+'.';
+    q += ` ${lbl}.`;
+  }
   if(reaction) q += ' '+cap(reaction)+'.';
   else if(!thorough && aimNearGreen) q += ' '+cap(miss)+'.';   // TEE QUIET (GN-11): green-miss only when aimed at the green
   if(thorough && aimNearGreen) q += ' '+cap(miss)+'.';          // TEE QUIET: off the tee / long shots get no green-miss
@@ -3020,8 +3071,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.40.0 — end */
+/* golf-sim 0.40.1 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.40.0 -->
+<!-- golf-sim 0.40.1 -->
