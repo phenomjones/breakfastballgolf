@@ -1,4 +1,4 @@
-<!-- golf-sim 0.40.1 -->
+<!-- golf-sim 0.41.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,25 @@
   </div>
 </div>
 <script>
-const VERSION='0.40.1';  /* SemVer.
+const VERSION='0.41.0';  /* SemVer.
+   WEDGE LADDER (0.41.0, minor) — GN-25 / playtest #3, Sully's Option B. The first concrete DILEMMAS-arc
+     build: when laying up is the play, the caddie RECOMMENDS A NUMBER TO LEAVE (so you have a FULL wedge,
+     not an awkward partial), not just narrates the aim. New shared engine leaveNumber()/_layupSpot()/
+     _wedgeFor() picks among the bag's full-swing scoring wedges (PW/GW/SW; LW excluded — a "full LW" is a
+     finesse club, never a stock layup target) and bends the pick for PIN DEPTH: a FRONT pin wants the
+     shorter/higher-lofted wedge (steep, stops fast — no green behind it); a BACK/MIDDLE pin wants the
+     longer wedge (a fuller, more repeatable swing with room to release). Firmness/receptivity bend deferred
+     to WEATHER STATION. Consumed in THREE places: (1) the two-shotter forced-layup voice; (2) the DEEP LIE
+     recovery voice (retrofit — the 0.40.1 generic "leave a full wedge" placeholder is replaced by a
+     wedge-aware classify of the forced leave); (3) a NEW VOLUNTARY lay-up-or-go OFFER on a REACHABLE green.
+     The voluntary trigger (Matt's Option B, against panel validate-first advice) is gated conservatively on
+     WATER in play (_waterShortOfPin or pin guardedBy water — Sully: the lay-up decision is a WATER decision,
+     not a bunker one) AND go-for-it distance (toPin >= LAYUP_OFFER_MIN=185, PROVISIONAL — the single tuning
+     knob; loosen/tighten to trade misfires vs coverage) AND the green actually reachable. It ADDS an option
+     to the normal read ("...or lay up to ~102, a full gap wedge") — it never hijacks the go-for-it read; the
+     human decides (no auto-aim — advice only). SURFACE: a recommended layup MARKER on the course (recLayup,
+     ephemeral, drawn green/dashed to distinguish it from the gold aim crosshair). Magnitudes PROVISIONAL
+     (LAYUP_OFFER_MIN, LAYUP_MIN_ADV, depth bands — Dr. Priya). No schema change; SCHEMA_VERSION still 1.
    TRUE VOICE (0.40.1, patch) = STOCK READ + ONE NUMBER + DEEP LIE — three caddie read/voice fixes from
      playtest. No engine or schema change (read-time voice only).
    STOCK READ (#4) — the club rec was scaling every club's carry by the SWING multiplier (_swF) before
@@ -1198,6 +1216,7 @@ let aiming=true,holed=false,lastBall=null,lastLie=null,lastStrokes=0,lastCL=null
 let pendingGimme=null;   // TAP IN: leave distance (ft) when a tap-in is offered but not yet conceded
 let tracer=null; // {pts:[], fade}
 let shotMeta=null; // BRASS YARDAGE: {carry,roll,total,club} of the last ball-flight shot (post-resolve)
+let recLayup=null; // WEDGE LADDER: ephemeral caddie LAYUP recommendation {leave,club,clubLabel,spot,reach} for the marker. Set in caddieRead, drawn in render, cleared on every recompute. Never persisted (advice, not state).
 let PAR=4;   // ROUND ONE: now per-hole (set in loadHole). Was const 4 — every hole scored as par 4, mis-scoring P17 (par 5) / P18 (par 3).
 let ROUND=null;          // ROUND ONE: the active round (plain serializable, mirrors entities.ts Round). null = sandbox.
 let curHoleShotIds=[];   // SHOT LEDGER: ids of ShotResults struck on the current hole (→ HoleScore.shotIds)
@@ -1935,6 +1954,8 @@ function render(){
       const ly=SY(ball.y)-yd*T.s;if(ly>30){ctx.fillStyle='rgba(255,255,255,.4)';ctx.font='10px JetBrains Mono';ctx.fillText(yd,SX(ball.x)+4,ly+12);}}}
   // aim preview
   if(target&&aiming&&!holed&&!anim){drawAim(SX,SY,T.s);}
+  // WEDGE LADDER: the caddie's recommended LAYUP spot (advice — distinct from the gold aim crosshair).
+  if(recLayup&&recLayup.spot&&!holed&&!anim&&!nearGreen())drawLayupRec(SX,SY,T.s);
   // tracer — yellow carry (lifted) + white roll-out (flat), per-point
   if(tracer&&tracer.pts.length>1){
     ctx.save();ctx.globalAlpha=tracer.fade;ctx.lineCap='round';
@@ -2050,6 +2071,22 @@ function drawBall(sx,sy,sc){
   ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.arc(sx(ball.x)+1,sy(ball.y)+1,4.5,0,7);ctx.fill();
   ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(sx(ball.x),sy(ball.y),4.5,0,7);ctx.fill();
   ctx.strokeStyle='#bbb';ctx.lineWidth=1;ctx.stroke();}
+// WEDGE LADDER: the recommended layup marker — a green dashed ring + label, deliberately distinct from
+// the gold aim crosshair so it reads as the caddie's ADVICE, not the player's committed aim.
+function drawLayupRec(sx,sy,sc){
+  const p=recLayup.spot, x=sx(p.x), y=sy(p.y);
+  ctx.save();
+  ctx.strokeStyle='rgba(123,194,106,.95)';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.arc(x,y,7,0,7);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#7bc26a';ctx.beginPath();ctx.arc(x,y,2.2,0,7);ctx.fill();
+  const txt='LAY UP ~'+recLayup.leave+' · '+recLayup.clubLabel;
+  ctx.font='700 10px JetBrains Mono';const w=ctx.measureText(txt).width;
+  const bx=x+11,by=y-9;
+  ctx.fillStyle='rgba(8,16,11,.85)';ctx.strokeStyle='rgba(123,194,106,.6)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.rect(bx,by,w+10,16);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#9fe08a';ctx.textAlign='left';ctx.fillText(txt,bx+5,by+12);
+  ctx.restore();
+}
 function drawAim(sx,sy,sc){
   const plan=shotPlan();if(!plan)return;
   if(plan.isPutt){ // RUSTED COMPASS: recommended make-line for the chosen pace
@@ -2281,6 +2318,58 @@ function _greenEdges(){const dx=GREEN.cx-ball.x,dy=GREEN.cy-ball.y,d=Math.hypot(
   if(d<0.1)return null;
   const ux=dx/d,uy=dy/d, t=1/Math.hypot(ux/GREEN.rx,uy/GREEN.ry);
   return{front:{x:GREEN.cx-ux*t,y:GREEN.cy-uy*t}, back:{x:GREEN.cx+ux*t,y:GREEN.cy+uy*t}};}
+// WEDGE LADDER (GN-25 / playtest #3, Sully's Option B): the shared LAYUP ENGINE. When laying up is the
+// play, a caddie doesn't narrate the aim — they RECOMMEND a NUMBER TO LEAVE, chosen so you have a FULL
+// wedge, not an awkward partial. leaveNumber() picks among the bag's full-swing scoring wedges and bends
+// the pick for pin depth (FRONT → shorter/higher-lofted wedge that stops fast; BACK/MID → longer, fuller,
+// more repeatable wedge with room to release). The firmness/receptivity bend is deferred to WEATHER
+// STATION. Built ONCE, consumed by the two-shotter voice, the DEEP LIE recovery voice, and the voluntary
+// lay-up-or-go offer. It RECOMMENDS — the player still commits the aim (no auto-aim; advice, you decide).
+const LAYUP_MIN_ADV=20;       // yds — a layup must advance at least this far, else you're effectively already there (PROVISIONAL)
+const LAYUP_OFFER_MIN=185;    // yds — the VOLUNTARY lay-up-or-go offer only fires at go-for-it distance (THE tuning knob; PROVISIONAL — loosen/tighten to trade misfires vs coverage)
+const WEDGE_SAY={PW:'pitching wedge',GW:'gap wedge',SW:'sand wedge',LW:'lob wedge'};   // spoken names — the bag's "Sand W" abbreviation reads badly aloud ("a full sand w")
+const _wedgeSay=id=>WEDGE_SAY[id]||((club(id)||[,id])[1]||id).toLowerCase();
+function leaveNumber(snap, o){
+  o=o||{};
+  const D=(o.D!=null)?o.D:toPinYd();                       // distance to the flag (yards)
+  const WEDGES=['PW','GW','SW'];                           // full-swing scoring wedges (LW excluded — finesse, not a stock layup target)
+  const cands=WEDGES.map(id=>{const b=snap.bag.find(x=>x.club===id);return b?{club:id,carry:b.baseCarry}:null;})
+                    .filter(Boolean).sort((a,b)=>b.carry-a.carry);   // longest→shortest by carry
+  if(!cands.length) return null;
+  const e=_greenEdges(); let depth=0.5;                    // pin depth: 0=front edge, 1=back edge (same projection greenPlan uses)
+  if(e){ const ex=e.back.x-e.front.x, ey=e.back.y-e.front.y, fb=ex*ex+ey*ey||1;
+         depth=Math.max(0,Math.min(1,((PIN.x-e.front.x)*ex+(PIN.y-e.front.y)*ey)/fb)); }
+  const FRONT=depth<0.38, BACK=depth>0.62;
+  const maxLeave=D-LAYUP_MIN_ADV;                          // longest sensible leave (shortest layup that still counts)
+  const minLeave=(o.recEff!=null)?Math.max(0,D-o.recEff):0;// forced: can't get closer than your one club carries; voluntary: no floor
+  const fits=cands.filter(c=>c.carry>=minLeave && c.carry<=maxLeave);
+  let pick, reach;
+  if(fits.length){ reach=true; pick=FRONT?fits[fits.length-1]:fits[0]; }   // FRONT→shortest (loft/stop); else→longest (full club)
+  else { reach=false; pick=(maxLeave<cands[cands.length-1].carry)?cands[cands.length-1]:cands[0]; }
+  const spot=_layupSpot(pick.carry, D);
+  const reason=!reach?(o.recEff!=null?'short':'tight'):(FRONT?'front':BACK?'back':'mid');
+  return { leave:pick.carry, club:pick.club, clubLabel:(club(pick.club)||[,pick.club])[1], clubSay:_wedgeSay(pick.club), spot, reach, depth, reason };
+}
+// a layup target on the centerline: the point AHEAD of the ball whose straight distance to the flag is
+// closest to `leave`. Geometric (the marker is "here's where this leaves you"); the SPOKEN number is the
+// wedge carry — a bag fact the player already knows, never green oracle truth.
+function _layupSpot(leave, D){
+  const {p,L}=_clCum(), tot=L[L.length-1], dBall=(D!=null)?D:toPinYd();
+  let best=null, bestErr=Infinity;
+  for(let d=0; d<=tot; d+=2){ const pt=_clPointAt(d), dp=Math.hypot(PIN.x-pt.x,PIN.y-pt.y);
+    if(dp>=dBall-2) continue;                              // must be ahead of the ball (closer to the flag)
+    const err=Math.abs(dp-leave); if(err<bestErr){bestErr=err; best=pt;} }
+  return best;                                             // null if nothing ahead — voice still gives the number, no marker
+}
+// classify a FORCED leave (the advance distance is dictated by the lie / one-club reach, not chosen):
+// which full-swing wedge does ~yds give you, and is it close enough to be a "full" wedge?
+function _wedgeFor(snap, yds){
+  const cands=['PW','GW','SW','LW'].map(id=>{const b=snap.bag.find(x=>x.club===id);
+    return b?{club:id,carry:b.baseCarry,clubLabel:(club(id)||[,id])[1]}:null;}).filter(Boolean);
+  if(!cands.length||yds<=0) return null;
+  let best=cands[0]; for(const c of cands) if(Math.abs(c.carry-yds)<Math.abs(best.carry-yds)) best=c;
+  return { club:best.club, clubLabel:best.clubLabel, clubSay:_wedgeSay(best.club), carry:best.carry, full:Math.abs(best.carry-yds)<=8 };
+}
 // for water: also compute the "clear" distance (the far edge along the ball→pin line)
 function _carryAndClear(poly){
   const dx=PIN.x-ball.x,dy=PIN.y-ball.y,d=Math.hypot(dx,dy); if(d<0.1)return null;
@@ -2554,6 +2643,7 @@ function greenPlan(snap, cad){
   return head+feedClause;
 }
 function caddieRead(){
+  recLayup=null;                                   // WEDGE LADDER: cleared each recompute; set only by a layup branch below
   if(holed)return '<span style="color:var(--gold-lt)">Nicely done.</span>';
   if(lie==='green'||lie==='fringe'){
     // RUSTED COMPASS: caddie's read for the chosen pace
@@ -2679,13 +2769,33 @@ function caddieRead(){
       q = plugged
         ? `You're ${lieSit} and ${_lieQ==='buried'?'buried down in it':'down in an old divot'} — ${est} to the flag, but no chance of getting home from a lie like this. ${lbl}, chop it out`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.'
         : `You're ${lieSit}, ${est} to the flag — no chance of getting home. ${lbl}, catch it clean and advance`+(leaves?` to about ${effY}, leaves you ~${leaves} in`:'')+'.';
-      // DEEP LIE: this is a LAYUP, not a green attack — "favor the fat of the green" was firing here and
-      // is nonsense on a punch-out. Generic full-wedge advice for now; WEDGE LADDER will swap this for
-      // leaveNumber() (the ideal leave). The differentiation Sully wants lives in the number left.
-      q += thorough ? " Just get it back in play and leave yourself a full wedge — don't get greedy." : ' Keep it simple — get it out.';
+      // DEEP LIE → WEDGE LADDER: this is a LAYUP, not a green attack. The advance distance is dictated by
+      // the lie / one-club reach (not chosen), so we CLASSIFY the forced leave (which full wedge ~leaves
+      // gives you) rather than pick one. On a plug you take what you get; from playable rough you can lay
+      // back a touch for a fuller wedge. Replaces the 0.40.1 generic "leave a full wedge" placeholder.
+      const _wf=_wedgeFor(snap, leaves), _plg=(_lieQ==='buried'||_lieQ==='divot');
+      if(_wf && leaves>0){
+        if(_plg){
+          q += thorough ? ` That leaves you ${_wf.full?'a full '+_wf.clubSay:'~'+leaves+', a partial '+_wf.clubSay} — but first just get it out.` : ' Just get it out.';
+        } else {
+          q += thorough ? ` Leave yourself a full wedge — ${_wf.full?'that advance leaves a full '+_wf.clubSay:'lay it to about '+_wf.carry+' for a full '+_wf.clubSay+', not an awkward '+leaves}.` : ` Leave a full ${_wf.clubSay}.`;
+        }
+        const _dx=PIN.x-ball.x,_dy=PIN.y-ball.y,_Lp=Math.hypot(_dx,_dy)||1;
+        recLayup={leave:leaves,club:_wf.club,clubLabel:_wf.clubLabel,spot:{x:ball.x+_dx/_Lp*r.recEff,y:ball.y+_dy/_Lp*r.recEff},reach:_wf.full};
+      } else {
+        q += thorough ? " Just get it back in play — don't get greedy." : ' Keep it simple — get it out.';
+      }
     } else {
       q = `That's ${est} ${lieSit} — you won't get there in one. ${lbl} is all I've got, about ${effY}`+(leaves?`, leaves ~${leaves}`:'')+'.';
-      q += thorough ? ' Move it down there and leave yourself a full wedge in.' : ' Just advance it.';
+      // WEDGE LADDER: name the wedge the forced advance leaves you (and offer to lay back for a fuller one).
+      const _wf2=_wedgeFor(snap, leaves);
+      if(_wf2 && leaves>0){
+        q += thorough ? ` Move it down there — ${_wf2.full?'that leaves a full '+_wf2.clubSay:'lay it to about '+_wf2.carry+' for a full '+_wf2.clubSay+' instead of an awkward '+leaves}.` : ` Advance it, full ${_wf2.clubSay} in.`;
+        const _dx=PIN.x-ball.x,_dy=PIN.y-ball.y,_Lp=Math.hypot(_dx,_dy)||1;
+        recLayup={leave:leaves,club:_wf2.club,clubLabel:_wf2.clubLabel,spot:{x:ball.x+_dx/_Lp*r.recEff,y:ball.y+_dy/_Lp*r.recEff},reach:_wf2.full};
+      } else {
+        q += thorough ? ' Move it down there and leave yourself a full wedge in.' : ' Just advance it.';
+      }
     }
     // DEEP LIE: a flyer can blow even an advance long; buried/divot are already inlined above as the reason.
     if(_lieQ==='fluffy') q+=' '+cap(lieVoice)+'.';   // GLASS HERON
@@ -2718,6 +2828,20 @@ function caddieRead(){
   if(reaction) q += ' '+cap(reaction)+'.';
   else if(!thorough && aimNearGreen) q += ' '+cap(miss)+'.';   // TEE QUIET (GN-11): green-miss only when aimed at the green
   if(thorough && aimNearGreen) q += ' '+cap(miss)+'.';          // TEE QUIET: off the tee / long shots get no green-miss
+  // WEDGE LADDER — VOLUNTARY lay-up-or-go OFFER (Option B). The green is REACHABLE but going carries real
+  // risk, so the caddie ADDS a layup option (never hijacks the go-for-it read — you decide). Gated
+  // conservatively on WATER in play (the lay-up decision is a water decision, not a bunker one — Sully) +
+  // go-for-it distance (LAYUP_OFFER_MIN, the tuning knob) + the green actually reachable. Misfire guard is
+  // the distance gate: routine approaches to a water-guarded green sit below it and stay quiet.
+  const _toPin=toPinYd(), _maxCarry=Math.max.apply(null,snap.bag.map(b=>b.baseCarry));
+  const _waterRisk=_waterShortOfPin()||(PIN.guardedBy||[]).includes('water');
+  if(_toPin>=LAYUP_OFFER_MIN && _waterRisk && _maxCarry>=_toPin*0.99){
+    const _lo=leaveNumber(snap,{D:r.estPlays});
+    if(_lo && _lo.reach && _lo.spot){
+      q += thorough ? ` Or take the water out of it — lay up to ${_lo.leave}, a full ${_lo.clubSay}, and wedge it close.` : ` Or lay up to ${_lo.leave} — full ${_lo.clubSay}.`;
+      recLayup={leave:_lo.leave,club:_lo.club,clubLabel:_lo.clubLabel,spot:_lo.spot,reach:true,voluntary:true};
+    }
+  }
   s+=`<br><span style="color:var(--muted)">${first}: "${q}"</span>`;
   // PIN STRATEGY: green-bound approach → append the advisory landing/feed plan (not for layups).
   const goingForGreen = Math.hypot((target?target.x:PIN.x)-GREEN.cx,(target?target.y:PIN.y)-GREEN.cy) <= Math.max(GREEN.rx,GREEN.ry)+15;
@@ -3071,8 +3195,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.40.1 — end */
+/* golf-sim 0.41.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.40.1 -->
+<!-- golf-sim 0.41.0 -->
