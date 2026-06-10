@@ -1,4 +1,4 @@
-<!-- golf-sim 0.41.0 -->
+<!-- golf-sim 0.43.0 -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -223,7 +223,36 @@
   </div>
 </div>
 <script>
-const VERSION='0.41.0';  /* SemVer.
+const VERSION='0.43.0';  /* SemVer.
+   LANDING SPOT (0.43.0, minor) — Option A, phase 1 (A-core). The input model becomes "click where you
+     want it to LAND, the caddie clubs you." (1) Click is the LANDING target everywhere; on a full shot the
+     caddie auto-fits the club to cover it (override allowed) and resets to a stock swing so the shot reaches
+     the spot cleanly. (2) Around-green flips from rest-target to landing-target: carry covers the full
+     distance to the click, then the ball RELEASES beyond it (land it here, let it run out) — each shot type
+     keeps its character via (1-cf)/cf (chip ~1.2× carry, flop ~0.1×, bump ~2.8×). Chips now behave like
+     every other shot (land at the click, roll past) instead of stopping at the click. (3) The aim label now
+     names the club (and a non-stock swing), so the map number is self-explanatory — kills the "menu says 208,
+     map says 194" contradiction; a club that can't reach reads "(short — carries ~N)". Predicted rest reuses
+     the existing caddie-tiered roll preview (confident for a strong caddie, fuzzy/absent for a weak one).
+     DEFERRED to later phases: explicit choke/lay-off/% partial controls (A-intent); proactive lay-up-to-a-
+     number + tiered shot-info aids (A-caddie). Riskiest change to the core shot loop yet — needs in-browser
+     playtest, especially the new short-game feel. No schema change; SCHEMA_VERSION still 1.
+   GROUNDS CREW (0.42.0, minor) = CHIP CHECK + ROUGH SPECTRUM — two ground-contact realism fixes.
+   CHIP CHECK (bug) — TRUE CARRY's full-swing hot-bias was firing on finesse shots. A chip with a PW
+     (full ~127) aimed 17y away read as eff=0.135 → a massive "over-club" → intended inflated to ~47,
+     so carry+roll ran ~2.5× past the click ("all chips run out a ton"). JADE LANTERN assumed
+     intended=tgtDist for around-green shots; GN-17 silently overwrote that for anything flying under
+     maxCarry — i.e. every chip/short pitch. Fix: finesse shots (chip/pitch/short partial) skip the
+     hot-bias entirely — intended=min(maxCarry,tgtDist), the click is the rest target again. Full-swing
+     club consequence (the GN-17 keystone) is untouched.
+   ROUGH SPECTRUM (realism) — rough was bimodal and brutal: 42% of all rough lies rolled 'buried'
+     (chop-out, QCARRY 0.43) and the other 58% 'fluffy' (flies hot), with no middle. Real heavy rough is
+     mostly "sitting down" — advanceable with a modest distance loss, occasional flyer — and a true plug
+     is rare. Added the 'sitting' lie quality (QCARRY 0.90, qPen 1.18, reduced flyer chance) and
+     rebalanced rough frequency to ~15% buried / 25% fluffy / 60% sitting. Now a 6-iron from 113 out of
+     normal rough reaches the green; a true plug (now rare) still forces the chop-out. Flat constants —
+     rough-height-driven frequency/penalty is the SETUP LAYER (B) job. Magnitudes PROVISIONAL (Dr. Priya).
+   No schema change; SCHEMA_VERSION still 1.
    WEDGE LADDER (0.41.0, minor) — GN-25 / playtest #3, Sully's Option B. The first concrete DILEMMAS-arc
      build: when laying up is the play, the caddie RECOMMENDS A NUMBER TO LEAVE (so you have a FULL wedge,
      not an awkward partial), not just narrates the aim. New shared engine leaveNumber()/_layupSpot()/
@@ -697,7 +726,7 @@ const refClubFor=d=>{let best='7i',bd=Infinity;for(const c of CLUBS){if(c[0]==='
    into maxCarry (shotPlan) and the rec's _eff (caddieLensRead), and model()/resolve inherit it via the
    now-lower `intended`. No double-count (eff = intended/maxCarry cancels it). fluffy flies (flyer handled
    separately) → neutral. Reads the live currentLie at call time. Provisional (Dr. Volk / Dr. Priya). */
-const QCARRY={clean:1, tight:0.97, fluffy:1.0, divot:0.90, sand:0.80, buried:0.43};   // CHOP OUT: buried 0.62→0.43 (single factor; resolver ×0.7 removed). PEWTER VANE: divot 0.86→0.90 (~14%→10%) — the control/flight hit already lives in qPen.divot (dispersion), so carry was double-charging.
+const QCARRY={clean:1, tight:0.97, fluffy:1.0, sitting:0.90, divot:0.90, sand:0.80, buried:0.43};   // ROUGH SPECTRUM: sitting 0.90 (sitting down in rough — ~24% total loss with the 0.84 surface factor; advanceable, not a chop-out). CHOP OUT: buried 0.62→0.43 (single factor; resolver ×0.7 removed). PEWTER VANE: divot 0.86→0.90 (~14%→10%) — the control/flight hit already lives in qPen.divot (dispersion), so carry was double-charging.
 const qCarryNow=()=>QCARRY[currentLie&&currentLie.quality]||1;
 /* ---------- REAL METRICS (SILVER TALON) — real units → engine scalars ----------
    Convert the real golfer inputs into the scalars the resolution formulas consume,
@@ -1077,7 +1106,7 @@ function captureLie(x,y){
   if(typeof TEE!=='undefined'&&TEE&&x===TEE.x&&y===TEE.y){currentLie={type:'tee',quality:'clean',gx:0,gy:0,steep:0};return;}
   const t=lieAt(x,y);let g=courseSlope(x,y);
   let q='clean';
-  if(t==='rough')q=Math.random()<0.42?'buried':'fluffy';
+  if(t==='rough'){const r=Math.random();q=r<0.15?'buried':r<0.40?'fluffy':'sitting';}   // ROUGH SPECTRUM: ~15% plugged (chop-out), ~25% sitting-up (flyer), ~60% sitting-down (advanceable, modest loss). PROVISIONAL freqs — SETUP LAYER will drive these off rough height.
   else if(t==='bunker')q='sand';
   else if(t==='fringe')q='tight';
   else if(t==='fairway')q=Math.random()<0.12?'divot':'clean';
@@ -1403,7 +1432,8 @@ function shotPlan(){
   // green — so wrong club finally hurts. The caddie's spoken number still reads tgtDist (buildSnapshot,
   // untouched): consequence surfaces only through the ball's flight, never the read (no-oracle).
   let intended;
-  if(tgtDist>=maxCarry){ intended=maxCarry; }                       // can't reach → honest under-club
+  if(finesse){ intended=Math.min(maxCarry, tgtDist); }              // CHIP CHECK: commanded finesse (chip/pitch/short partial) — the click is the rest target; TRUE CARRY's full-swing hot-bias must not apply
+  else if(tgtDist>=maxCarry){ intended=maxCarry; }                  // can't reach → honest under-club
   else{
     const eff=tgtDist/maxCarry;                                     // 1=full swing, low=big over-club
     const over=Math.max(0,NAT_FLOOR-eff);                           // departure below the comfortable window
@@ -1436,10 +1466,12 @@ function model(plan){
   const st=plan.aroundGreen?STYPES[shotType]:null;
   // distance: lie up/downhill + around-green carry fraction
   let total=plan.intended*(1-rel.along*1.1);
-  let carry = st? total*st.cf : total;
-  // JADE LANTERN: for around-green shots the click is the FINAL REST target.
-  // carry covers cf of it, the rest is roll-out, so carry+roll ≈ intended.
-  let agRoll = st? total-carry : 0;
+  // LANDING SPOT: the click is the LANDING target everywhere now. carry covers the full distance to the
+  // spot; for around-green the ball then RELEASES beyond it (land it here, let it run out). The release
+  // keeps each shot type's character via (1-cf)/cf — a chip runs ~1.2× its carry, a flop ~0.1×, a bump
+  // ~2.8×. (Magnitudes inherited from the old cf split; PROVISIONAL — Dr. Priya.)
+  let carry = total;
+  let agRoll = st? total*((1-st.cf)/st.cf) : 0;
   // trajectory / shot-type roll
   let rollF = st? st.roll : t.roll;
   // can't elevate from downhill or buried lies
@@ -1467,7 +1499,7 @@ function model(plan){
   const head=-(wu.x*Math.cos(plan.ang)+wu.y*Math.sin(plan.ang));
   const windF=1+Math.max(0,head)*(WIND.mph/100)*2.0*t.wind;   // GALE FORCE: 1.1 → 2.0 (paired with windYds 0.5 → 0.9; both wind sites scale together)
   // lie quality + stance penalties
-  const qPen={clean:1,fluffy:1.12,buried:1.7,tight:1.1,divot:1.4,sand:1.8}[currentLie.quality]||1;
+  const qPen={clean:1,fluffy:1.12,sitting:1.18,buried:1.7,tight:1.1,divot:1.4,sand:1.8}[currentLie.quality]||1;
   const stancePen=1+currentLie.steep*5+Math.abs(rel.cross)*4;
   const fight=(SHAPES[shape]&&Math.sign(SHAPES[shape])===-Math.sign(lieCurve||0)&&lieCurve!==0)?1.22:1; // shaping against the lie
   const highPen=canHigh?1:1.5;
@@ -1500,6 +1532,7 @@ function resolveShot(){
   // the OPPOSITE (clubhead slowed → knuckleball, less distance — handled just below).
   const flyP={'6i':.28,'7i':.30,'8i':.30,'9i':.26,PW:.22,'5i':.18,'4i':.12,H:.10,GW:.10,'5W':.06,SW:.05,'3W':.04,LW:.03,D:0}[cid]??.12;
   if(currentLie.quality==='fluffy'&&Math.random()<flyP){carry*=1.08+Math.random()*0.12;flyer=true;note+='Flyer! ';}
+  else if(currentLie.quality==='sitting'&&Math.random()<flyP*0.5){carry*=1.04+Math.random()*0.06;flyer=true;note+='Flyer! ';}   // ROUGH SPECTRUM: sitting down flyers less often and milder than sitting up
   // CHOP OUT: legacy `if(buried)carry*=0.7` removed — buried distance loss now lives solely in QCARRY.buried (0.43), folded into intended via maxCarry, so the shot no longer double-counts it.
   carry=Math.max(carry,3);
   // wind drift — PLAYS TRUE: along/cross/windYds now come from the shared pre-shot fn (same math)
@@ -2199,7 +2232,13 @@ function drawAim(sx,sy,sc){
   const aimIsPin=!target||Math.hypot(aimX-PIN.x,aimY-PIN.y)<2;
   const aimEst=yEst(plan.tgtDist,plan.tgtDist,aimElev,aimIsPin?'pin':'aim');
   let lbl=aimEst.txt;
-  if(plan.capped) lbl+=' (you carry '+presentYds(plan.maxCarry,(1-cad.playingYards)*8,(cad.voice&&cad.voice.numbers)||'bare')+')';
+  // LANDING SPOT: name the club (and a non-stock swing) so the map number is self-explanatory — no more
+  // "menu says 208, map says 194" confusion. The number is the caddie's read of the carry to your spot.
+  if(!plan.aroundGreen){
+    const _sw=swing==='smooth'?'smooth ':swing==='hard'?'hard ':'';
+    lbl+=' · '+_sw+((club(plan.cid)||[,plan.cid])[1]);
+  }
+  if(plan.capped) lbl+=' (short — carries ~'+presentYds(plan.maxCarry,(1-cad.playingYards)*8,(cad.voice&&cad.voice.numbers)||'bare')+')';
   ctx.font='700 12px JetBrains Mono';const tw=ctx.measureText(lbl).width;
   ctx.fillStyle='rgba(8,16,11,.8)';ctx.fillRect(sx(lp.x)+9,sy(lp.y)-9,tw+10,18);
   ctx.fillStyle=plan.capped?'#e0a24a':'#d9b34c';ctx.fillText(lbl,sx(lp.x)+14,sy(lp.y)+3.5);
@@ -2754,6 +2793,7 @@ function caddieRead(){
   const lieVoice =
       _lieQ==='buried' ? (thorough?"you're plugged — buried down in it, no full swing on this, all you can do is chop it out":"buried — just a chop-out")
     : _lieQ==='fluffy' ? (thorough?"it's sitting up — watch the flyer, it comes out hot and runs":"sitting up, could fly on you")
+    : _lieQ==='sitting' ? (thorough?"it's sitting down in the rough — figure a touch shorter and a little less spin, but you can advance it":"down in the rough, plays a bit shorter")
     : _lieQ==='divot'  ? (thorough?"you're down in an old divot — it'll come off lower with less spin, so plan for the run":"in a divot, comes out low and hot")
     : _lieQ==='tight'  ? (thorough?"tight lie, no cushion under it — clean ball-first contact or it scoots":"tight lie, nip it clean")
     : (_lieQ==='sand'&&lie==='bunker') ? (thorough?"off the sand — catch it ball-first, I'd take the extra club":"off the sand, catch it clean")
@@ -2913,7 +2953,17 @@ cv.addEventListener('click',e=>{if(holed||anim||puttingNow())return;const r=cv.g
   let cx=X2C(e.clientX-r.left),cy=Y2C(e.clientY-r.top);
   if(Math.hypot(cx-PIN.x,cy-PIN.y)<2.2){cx=PIN.x;cy=PIN.y;} // snap to pin
   cancelForwardZoom();   // FORWARD FRAME: don't yank the view out from under an aim
-  target={x:cx,y:cy};aiming=true;render();drawLie();drawGreenView();});
+  target={x:cx,y:cy};aiming=true;
+  // LANDING SPOT: the click is the LANDING target. On a full shot the caddie clubs you for it (auto-fit,
+  // override allowed) and resets to a stock swing so the clubbed shot reaches the spot cleanly. Around-green
+  // keeps the shot-type club. The player can re-pick the club or change the swing after.
+  const _z=shotZone();
+  if(_z!=='chip'&&_z!=='pitch'){
+    shotType='auto';document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));
+    _setSwingStock();
+    try{const _r=caddieLensRead(buildSnapshot(),caddie()); if(_r&&_r.recClub){document.getElementById('club').value=_r.recClub;}}catch(_e){}
+  }
+  sync();render();});
 document.getElementById('hit').addEventListener('click',resolveShot);
 document.getElementById('gimme').addEventListener('click',concedeGimme);   // TAP IN
 document.getElementById('zoomtoggle').addEventListener('click',toggleZoom);   // FORWARD FRAME
@@ -2943,6 +2993,7 @@ function resetControls(){shape='straight';traj='mid';shotType='auto';pace='die';
   [['swingrow','stock','p'],['shaperow','straight','sh'],['trajrow','mid','t'],['pacerow','die','pc']].forEach(([r,val,a])=>{
     document.querySelectorAll('#'+r+' .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset[a]===val));});
   document.querySelectorAll('#styperow .pwbtn').forEach(x=>x.classList.remove('on'));swing='stock';}
+function _setSwingStock(){swing='stock';document.querySelectorAll('#swingrow .pwbtn').forEach(x=>x.classList.toggle('on',x.dataset.p==='stock'));}
 document.getElementById('undo').addEventListener('click',()=>{if(lastBall&&!anim){clearGimme();ball={...lastBall};lie=lastLie;strokes=lastStrokes;currentLie=lastCL?{...lastCL}:currentLie;holed=false;target=null;aiming=true;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);sync();setView(true);flash('Replaying last shot.');}});
 document.getElementById('newhole').addEventListener('click',()=>{clearGimme();ball={...TEE};lie='tee';strokes=0;target=null;aiming=true;holed=false;lastBall=null;tracer=null;shotMeta=null;setLastShot(null);showShotData(null);
   rollWind();captureLie(TEE.x,TEE.y);resetControls();document.getElementById('log').innerHTML='';document.getElementById('club').value='D';sync();setView(false);
@@ -3195,8 +3246,8 @@ function init(){const sel=document.getElementById('club');
   flash('The Bend · Par 4. Wind: '+WIND.mph+' mph. Tucked front-right pin — water short, bunker right, tree on the approach.');
   startRound();}   // ROUND ONE: boot into a playable round over the Paramount holes (Bend stays sandbox)
 init();
-/* golf-sim 0.41.0 — end */
+/* golf-sim 0.43.0 — end */
 </script>
 </body>
 </html>
-<!-- golf-sim 0.41.0 -->
+<!-- golf-sim 0.43.0 -->
